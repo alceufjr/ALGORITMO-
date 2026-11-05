@@ -8,7 +8,6 @@
     "start": "npx --yes serve www -l 8080",
     "test": "node tests/levels.test.js",
     "test:e2e": "node tests/e2e.test.js",
-    "test:ropemaze": "node tests/ropemaze.test.js",
     "icons": "node scripts/make-icons.js",
     "android": "npx cap sync android && npx cap open android",
     "ios": "npx cap sync ios && npx cap open ios",
