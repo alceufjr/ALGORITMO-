@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#f6ebe3">
+  <meta name="description" content="Desenrola! — puzzle relaxante: arraste as pontas e desfaça os nós das cordas.">
+  <title>Desenrola!</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-512.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===================== MENU ===================== -->
+    <section id="home" class="screen active">
+      <div class="logo">
+        <svg viewBox="0 0 200 120" aria-hidden="true">
+          <path d="M20 95 C60 10, 120 120, 180 25" stroke="#2b1d1a" stroke-width="22" fill="none" stroke-linecap="round"/>
+          <path d="M20 95 C60 10, 120 120, 180 25" stroke="#3a86ff" stroke-width="15" fill="none" stroke-linecap="round"/>
+          <path d="M25 25 C80 120, 130 0, 175 95" stroke="#2b1d1a" stroke-width="22" fill="none" stroke-linecap="round"/>
+          <path d="M25 25 C80 120, 130 0, 175 95" stroke="#ff4d6d" stroke-width="15" fill="none" stroke-linecap="round"/>
+          <circle cx="20" cy="95" r="14" fill="#3a86ff" stroke="#2b1d1a" stroke-width="4"/>
+          <circle cx="180" cy="25" r="14" fill="#3a86ff" stroke="#2b1d1a" stroke-width="4"/>
+          <circle cx="25" cy="25" r="14" fill="#ff4d6d" stroke="#2b1d1a" stroke-width="4"/>
+          <circle cx="175" cy="95" r="14" fill="#ff4d6d" stroke="#2b1d1a" stroke-width="4"/>
+        </svg>
+        <h1>Desenrola!</h1>
+        <p class="tag">Desfaça os nós. Relaxe a mente.</p>
+      </div>
+      <div class="menu">
+        <button id="btnPlay" class="btn big primary">Jogar <span id="playLevel"></span></button>
+        <button id="btnLevels" class="btn">Fases</button>
+        <div class="row">
+          <button id="btnSound" class="btn icon" aria-label="Som">🔊</button>
+          <button id="btnVibe" class="btn icon" aria-label="Vibração">📳</button>
+          <button id="btnNoAds" class="btn icon hidden" aria-label="Remover anúncios">🚫</button>
+        </div>
+        <p class="stats"><span id="totalStars">0</span> ★ conquistadas</p>
+      </div>
+      <a class="privacy" href="privacidade.html">Política de privacidade</a>
+    </section>
+
+    <!-- ===================== FASES ===================== -->
+    <section id="levels" class="screen">
+      <header class="bar">
+        <button class="btn icon back" data-go="home" aria-label="Voltar">←</button>
+        <h2>Fases</h2>
+        <span class="pill"><span id="levelsStars">0</span> ★</span>
+      </header>
+      <div id="levelGrid" class="level-grid"></div>
+    </section>
+
+    <!-- ===================== JOGO ===================== -->
+    <section id="play" class="screen">
+      <header class="bar">
+        <button class="btn icon back" data-go="home" aria-label="Menu">☰</button>
+        <div class="title">
+          <h2>Fase <span id="hudLevel">1</span></h2>
+          <small id="hudTier">Fácil</small>
+        </div>
+        <span class="pill" title="Jogadas / meta">⟲ <span id="hudMoves">0</span>/<span id="hudPar">0</span></span>
+      </header>
+      <div class="knots"><span id="hudKnots">0</span> <span id="hudKnotsLabel">cruzamentos</span></div>
+      <p id="tutorial" class="tutorial hidden">Arraste uma bolinha para um furo vazio.<br>Vença quando <b>nenhuma corda</b> se cruzar.</p>
+      <div id="boardWrap"><canvas id="board"></canvas></div>
+      <footer class="bar bottom">
+        <button id="btnUndo" class="btn icon" aria-label="Desfazer">↶</button>
+        <button id="btnRestart" class="btn icon" aria-label="Recomeçar">⟳</button>
+        <button id="btnMarkers" class="btn icon" aria-label="Mostrar cruzamentos">✖</button>
+        <button id="btnHint" class="btn icon hint" aria-label="Dica">💡<span id="hintCount" class="badge">3</span></button>
+      </footer>
+    </section>
+
+    <!-- ===================== MODAIS ===================== -->
+    <div id="winModal" class="modal hidden">
+      <div class="card">
+        <h2>Desenrolado!</h2>
+        <div id="winStars" class="stars"><span>★</span><span>★</span><span>★</span></div>
+        <p id="winText"></p>
+        <p id="winBonus" class="bonus hidden">+1 dica de bônus 💡</p>
+        <div class="row">
+          <button id="btnReplay" class="btn">Repetir</button>
+          <button id="btnNext" class="btn primary">Próxima ▶</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="hintModal" class="modal hidden">
+      <div class="card">
+        <h2>Sem dicas 💡</h2>
+        <p>Assista a um vídeo curto e ganhe <b id="hintReward">2</b> dicas.</p>
+        <div class="row">
+          <button id="btnHintCancel" class="btn">Agora não</button>
+          <button id="btnHintWatch" class="btn primary">▶ Assistir</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

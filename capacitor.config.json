@@ -1,0 +1,17 @@
+{
+  "appId": "com.seunome.desenrola",
+  "appName": "Desenrola!",
+  "webDir": "www",
+  "backgroundColor": "#f6ebe3",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never"
+  },
+  "plugins": {
+    "AdMob": {
+      "requestTrackingAuthorization": true
+    }
+  }
+}

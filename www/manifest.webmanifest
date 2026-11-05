@@ -1,0 +1,17 @@
+{
+  "name": "Desenrola! — Puzzle de Cordas",
+  "short_name": "Desenrola!",
+  "description": "Arraste as pontas e desfaça os nós. Centenas de fases com dificuldade progressiva.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6ebe3",
+  "theme_color": "#f6ebe3",
+  "lang": "pt-BR",
+  "categories": ["games", "puzzle"],
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
