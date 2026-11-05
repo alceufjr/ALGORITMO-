@@ -10,6 +10,30 @@ function shade(hex, amt) {
 
 const ease = (t) => 1 - Math.pow(1 - t, 3);
 
+/** Interseção própria de dois segmentos (t, u = posição ao longo de cada um, 0..1). */
+function segCross(a, b, c, d) {
+  const rx = b.x - a.x, ry = b.y - a.y, sx = d.x - c.x, sy = d.y - c.y;
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+  if (t <= 0.001 || t >= 0.999 || u <= 0.001 || u >= 0.999) return null;
+  return { x: a.x + t * rx, y: a.y + t * ry, t, u };
+}
+
+/** Caminho retangular que cobre a faixa de uma corda (largura w), sem as pontas arredondadas. */
+function bandPath(ctx, a, b, w) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * w / 2, ny = (dx / len) * w / 2;
+  ctx.beginPath();
+  ctx.moveTo(a.x + nx, a.y + ny);
+  ctx.lineTo(b.x + nx, b.y + ny);
+  ctx.lineTo(b.x - nx, b.y - ny);
+  ctx.lineTo(a.x - nx, a.y - ny);
+  ctx.closePath();
+}
+
 export class Renderer {
   constructor(canvas) {
     this.c = canvas;
@@ -39,6 +63,7 @@ export class Renderer {
 
   setGame(g) {
     this.g = g;
+    this.layers = new Map();
     this.drag = this.snap = this.hint = null;
     this.particles = [];
     this.winT = 0;
@@ -54,7 +79,7 @@ export class Renderer {
     this.ox = (this.w - (cols - 1) * cell) / 2;
     this.oy = (this.h - (rows - 1) * cell) / 2;
     this.pegR = cell * 0.27;
-    this.ropeW = Math.max(6, cell * 0.17);
+    this.ropeW = Math.max(7, cell * 0.2);
   }
 
   pegPos(id) {
@@ -159,6 +184,8 @@ export class Renderer {
       const lifted = this.drag && this.drag.ropeId === id;
       this.drawRope(pos[id][0], pos[id][1], r.color, lifted, pulse);
     }
+    // entrelaçamento: em cada cruzamento, decide quem passa por cima e redesenha só ali
+    this.drawWeave(pos, pulse);
     for (const id of g.order) {
       const r = g.ropes[id];
       const lifted = this.drag && this.drag.ropeId === id;
@@ -189,6 +216,107 @@ export class Renderer {
     this.dirty = false;
   }
 
+  /**
+   * Cruzamentos em coordenadas de tela, com quem passa POR CIMA em cada um.
+   * Regra de "trama": ao longo de cada corda os cruzamentos alternam cima/baixo,
+   * como um nó de verdade. Quando as duas cordas discordam, vale a mais recente
+   * (ordem de profundidade). A corda sendo arrastada passa sempre por cima.
+   */
+  weave(pos) {
+    const g = this.g;
+    const dragged = this.drag ? this.drag.ropeId : -1;
+    const z = {};
+    g.order.forEach((id, i) => { z[id] = i; });
+    const ids = g.order.slice().sort((a, b) => a - b);
+    const list = [];
+    for (let x = 0; x < ids.length; x++) {
+      for (let y = x + 1; y < ids.length; y++) {
+        const i = ids[x], j = ids[y];
+        const p = segCross(pos[i][0], pos[i][1], pos[j][0], pos[j][1]);
+        if (p) list.push({ i, j, x: p.x, y: p.y, ti: p.t, tj: p.u });
+      }
+    }
+    // posição (k) de cada cruzamento ao longo de cada corda, ignorando a arrastada
+    const along = {};
+    for (const c of list) {
+      if (c.i === dragged || c.j === dragged) continue;
+      (along[c.i] ||= []).push([c.ti, c]);
+      (along[c.j] ||= []).push([c.tj, c]);
+    }
+    for (const [id, arr] of Object.entries(along)) {
+      arr.sort((a, b) => a[0] - b[0]);
+      arr.forEach(([, c], k) => { if (c.i === +id) c.ki = k; else c.kj = k; });
+    }
+    for (const c of list) {
+      if (c.i === dragged) { c.over = c.i; continue; }
+      if (c.j === dragged) { c.over = c.j; continue; }
+      const wantI = (c.ki + c.i) % 2 === 0;
+      const wantJ = (c.kj + c.j) % 2 === 0;
+      c.over = wantI !== wantJ ? (wantI ? c.i : c.j) : (z[c.i] > z[c.j] ? c.i : c.j);
+    }
+    // a arrastada por último, para nunca ser coberta
+    return list.sort((a, b) => (a.over === dragged) - (b.over === dragged));
+  }
+
+  drawWeave(pos, pulse) {
+    const ctx = this.ctx;
+    const g = this.g;
+    const dragged = this.drag ? this.drag.ropeId : -1;
+    for (const c of this.weave(pos)) {
+      const over = c.over, under = c.over === c.i ? c.j : c.i;
+      const [oa, ob] = pos[over], [ua, ub] = pos[under];
+      const lifted = over === dragged;
+      const wo = this.ropeW * (lifted ? 1.12 : 1) + 6;
+      const wu = this.ropeW * (under === dragged ? 1.12 : 1) + 6;
+
+      // 1) sombra difusa na corda de baixo: ela "afunda" sob a de cima
+      const sin = Math.abs(((ob.x - oa.x) * (ub.y - ua.y) - (ob.y - oa.y) * (ub.x - ua.x)) /
+        ((Math.hypot(ob.x - oa.x, ob.y - oa.y) * Math.hypot(ub.x - ua.x, ub.y - ua.y)) || 1));
+      const R = Math.min(this.ropeW * 6, (wo / 2) / Math.max(sin, 0.2) + this.ropeW * 1.4);
+      ctx.save();
+      bandPath(ctx, ua, ub, wu);
+      ctx.clip();
+      const gr = ctx.createRadialGradient(c.x + 1, c.y + 2, 0, c.x + 1, c.y + 2, R);
+      gr.addColorStop(0, 'rgba(0,0,0,.6)');
+      gr.addColorStop(0.55, 'rgba(0,0,0,.32)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(c.x - R - 2, c.y - R - 2, 2 * R + 4, 2 * R + 4);
+      ctx.restore();
+
+      // 2) redesenha a corda de cima apenas na área em que as duas se sobrepõem
+      //    (faixa da corda de baixo alargada p/ cobrir contorno e sombra: evita "costuras")
+      ctx.save();
+      bandPath(ctx, ua, ub, wu + 10);
+      ctx.clip();
+      bandPath(ctx, oa, ob, wo);
+      ctx.clip();
+      // copia a corda pronta de uma camada própria: uma única mistura na borda do recorte
+      ctx.drawImage(this.ropeLayer(over, oa, ob, g.ropes[over].color, lifted, pulse), 0, 0, this.w, this.h);
+      ctx.restore();
+    }
+  }
+
+  /** Camada fora da tela com a corda desenhada (em cache até ela se mover). */
+  ropeLayer(id, a, b, color, lifted, pulse) {
+    this.layers ||= new Map();
+    const key = [a.x, a.y, b.x, b.y, color, lifted, pulse, this.c.width, this.c.height, this.ropeW].join();
+    let L = this.layers.get(id);
+    if (L && L.key === key) return L.canvas;
+    if (!L) { L = { canvas: document.createElement('canvas') }; this.layers.set(id, L); }
+    const cv = L.canvas;
+    if (cv.width !== this.c.width || cv.height !== this.c.height) { cv.width = this.c.width; cv.height = this.c.height; }
+    const lc = cv.getContext('2d');
+    lc.setTransform(1, 0, 0, 1, 0, 0);
+    lc.clearRect(0, 0, cv.width, cv.height);
+    lc.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const main = this.ctx;
+    this.ctx = lc;
+    try { this.drawRope(a, b, color, lifted, pulse); } finally { this.ctx = main; }
+    L.key = key;
+    return cv;
+  }
+
   drawRope(a, b, color, lifted, pulse) {
     const ctx = this.ctx;
     const w = this.ropeW * (lifted ? 1.12 : 1);
@@ -205,7 +333,7 @@ export class Renderer {
     ctx.beginPath(); ctx.moveTo(a.x + so * 0.4, a.y + so); ctx.lineTo(b.x + so * 0.4, b.y + so); ctx.stroke();
     // contorno
     ctx.strokeStyle = this.board.outline;
-    ctx.lineWidth = w + 4;
+    ctx.lineWidth = w + 5;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     // corpo
     ctx.strokeStyle = pulse ? shade(color, 0.25 * pulse) : color;
