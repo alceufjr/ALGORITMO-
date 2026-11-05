@@ -294,7 +294,65 @@ export class Renderer {
       this.drawStraightRope(O, g.ropes[c.over].color, width(c.over), pulse);
       ctx.restore();
     }
+    // 4) o NÓ: em cada cruzamento a corda de cima dá voltas em torno da de baixo
+    for (const c of list) this.drawKnot(c, segments, width, pulse);
     ctx.restore();
+  }
+
+  /**
+   * Desenha um nó amarrado no cruzamento c: 3 voltas da corda de CIMA enroladas em
+   * torno da corda de BAIXO (cada volta é um arco com contorno, cor e listra), mais
+   * uma sombra. É só decoração: o caminho das duas cordas continua reto.
+   */
+  drawKnot(c, segments, width, pulse) {
+    const ctx = this.ctx;
+    const g = this.g;
+    const U = segments[c.under];
+    const ul = U.len || 1;
+    const ux = (U.b.x - U.a.x) / ul, uy = (U.b.y - U.a.y) / ul; // ao longo da corda de baixo
+    const nx = -uy, ny = ux;                                    // atravessando a corda de baixo
+    const wu = width(c.under), wo = width(c.over);
+    const color = g.ropes[c.over].color;
+    const body = pulse ? shade(color, 0.25 * pulse) : color;
+    const reach = wu * 0.95;            // a volta abraça a corda de baixo de um lado ao outro
+    const band = Math.max(4, wo * 0.62); // espessura de cada volta
+    const gap = band * 1.05;            // distância entre voltas
+    const tilt = band * 0.55;           // inclinação da volta (aspecto de espiral)
+
+    // sombra do nó sobre a corda de baixo
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.28)';
+    ctx.beginPath();
+    ctx.ellipse(c.x + 1.5, c.y + 3.5, gap * 2.1, reach * 1.05, Math.atan2(uy, ux), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    for (let k = -1; k <= 1; k++) {
+      const cx = c.x + ux * gap * k, cy = c.y + uy * gap * k;
+      // volta: arco de um lado da corda de baixo ao outro, inclinado
+      const ax = cx + nx * reach - ux * tilt, ay = cy + ny * reach - uy * tilt;
+      const bx = cx - nx * reach + ux * tilt, by = cy - ny * reach + uy * tilt;
+      const qx = cx + ux * band * 0.55, qy = cy + uy * band * 0.55; // barriga do arco
+      const wrap = () => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(qx, qy, bx, by); };
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = this.board.outline;
+      ctx.lineWidth = band + 4;
+      wrap(); ctx.stroke();
+      ctx.strokeStyle = body;
+      ctx.lineWidth = band;
+      wrap(); ctx.stroke();
+      ctx.strokeStyle = shade(color, -0.25);   // listra da trança na volta
+      ctx.lineWidth = Math.max(1, band * 0.22);
+      ctx.beginPath();
+      ctx.moveTo((ax + qx) / 2, (ay + qy) / 2); ctx.lineTo((qx + bx) / 2, (qy + by) / 2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; // brilho
+      ctx.lineWidth = Math.max(1, band * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(ax - ux * band * 0.2, ay - uy * band * 0.2);
+      ctx.quadraticCurveTo(qx - ux * band * 0.2, qy - uy * band * 0.2, bx - ux * band * 0.2, by - uy * band * 0.2);
+      ctx.stroke();
+    }
   }
 
   /** Uma corda reta: contorno preto, cor, listras da trança e brilho. Espessura constante. */

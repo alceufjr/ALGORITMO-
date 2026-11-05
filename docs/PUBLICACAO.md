@@ -60,6 +60,7 @@
 | Banner adaptativo | rodapé, sempre (apps) | `showBanner` |
 | Intersticial | a cada 3 fases, nunca antes da fase 4, ≥ 90 s de intervalo | `interstitialEveryLevels`, `firstInterstitialAfterLevel`, `interstitialMinIntervalSec` |
 | Premiado (rewarded) | jogador sem dicas escolhe assistir → +2 dicas | `hints.perRewarded` |
+| Premiado (rewarded) | tempo esgotado → +30 s | `timer.extraRewarded` |
 | Premiado (rewarded) | após 3 desfazeres grátis na fase → +3 desfazeres | `undo.freePerLevel`, `undo.perRewarded` |
 
 O premiado costuma ter o melhor eCPM e a melhor aceitação: é opcional para o jogador.

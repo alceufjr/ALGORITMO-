@@ -44,6 +44,9 @@ npm run test:e2e     # joga no navegador (precisa de npm start rodando e do Play
 
 - **Tutorial (fases 1–5):** 4 fases feitas à mão + dicas que ensinam a regra, a jogada que
   desfaz vários nós, a ordem/desfazer, a dica e as estrelas. Depois, fases procedurais.
+- **Nós visíveis:** em cada cruzamento a corda de cima dá voltas amarradas na de baixo.
+- **Cronômetro:** a partir da fase 5 (e no desafio diário) cada fase tem tempo limite
+  (45 s + 12 s por jogada da meta); ao acabar, recomeça ou ganha +30 s com vídeo premiado.
 - **Desfazer:** 3 grátis por fase; mais 3 assistindo a um vídeo premiado.
 - **Acabamento:** brilho ao desfazer cada nó, entrada animada do tabuleiro, "Perfeito!" ao
   bater a meta.

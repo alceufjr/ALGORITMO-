@@ -1,5 +1,5 @@
 // Service worker: permite jogar offline na versão web/PWA.
-const CACHE = 'desata-v3';
+const CACHE = 'desata-v4';
 const ASSETS = [
   './', 'index.html', 'privacidade.html', 'manifest.webmanifest', 'css/style.css',
   'js/main.js', 'js/config.js', 'js/levels.js', 'js/core.js', 'js/rng.js',
