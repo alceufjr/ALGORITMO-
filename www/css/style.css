@@ -7,6 +7,7 @@
   --primary: #ff7f11;
   --primary-d: #c75c00;
   --accent: #3a86ff;
+  --text: #2b1d1a;        /* texto sobre o fundo (muda no tema escuro) */
   --banner: 0px;          /* altura do banner AdMob, setada via JS */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -15,8 +16,9 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body {
   margin: 0; height: 100%; overflow: hidden;
-  background: radial-gradient(circle at 50% 0%, #fff6ef 0%, var(--bg) 55%, var(--bg2) 100%);
-  color: var(--ink);
+  background: var(--bg);
+  background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--bg) 55%, white) 0%, var(--bg) 55%, var(--bg2) 100%);
+  color: var(--text);
   font-family: "Nunito", "Trebuchet MS", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   user-select: none; -webkit-user-select: none; touch-action: none;
 }
@@ -61,7 +63,7 @@ html, body {
 .bar .title { text-align: center; line-height: 1.05; }
 .bar .title small { color: var(--muted); font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
 .bar.bottom { justify-content: center; gap: 18px; padding-bottom: 14px; }
-.pill { background: var(--card); border: 3px solid var(--ink); border-radius: 999px; padding: 6px 12px; font-weight: 800; min-width: 54px; text-align: center; }
+.pill { color: var(--ink); background: var(--card); border: 3px solid var(--ink); border-radius: 999px; padding: 6px 12px; font-weight: 800; min-width: 54px; text-align: center; }
 .badge { position: absolute; top: -8px; right: -8px; background: #e63946; color: #fff; font-size: 13px;
   border: 2px solid var(--ink); border-radius: 999px; min-width: 24px; height: 24px; display: grid; place-items: center; }
 
@@ -93,9 +95,30 @@ html, body {
 @keyframes pop { from { transform: scale(.4); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
 
-.toast { position: fixed; left: 50%; bottom: calc(110px + var(--banner)); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 700; z-index: 20; }
+.toast { position: fixed; left: 50%; bottom: calc(110px + var(--banner)); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 700; z-index: 20; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
 
 /* simulação de anúncio (modo teste) */
 .mock-ad { position: fixed; inset: 0; z-index: 50; background: #111c; display: grid; place-items: center; }
 .mock-ad-box { background: #fff; border-radius: 16px; padding: 28px; width: min(320px, 90vw); text-align: center; }
 .mock-ad-box small { color: #c00; font-weight: 800; }
+
+/* ---------- menu: extras ---------- */
+#btnLang { position: absolute; top: 12px; right: 14px; font-size: 15px !important; }
+.btn.daily { min-width: 240px; background: #ffe08a; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.btn.daily small { font-size: 13px; color: #b5480f; }
+.btn.daily.done { background: #c8f0d8; }
+.menu .row .btn:not(.icon) { min-width: 0; flex: 1; }
+.menu .row { width: 240px; }
+
+/* ---------- estilos (temas) ---------- */
+.theme-grid { flex: 1; overflow-y: auto; touch-action: pan-y; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; padding: 10px 16px 30px; align-content: start; }
+.theme-card { background: var(--card); border: 3px solid var(--ink); border-radius: 18px; padding: 10px; box-shadow: 0 5px 0 var(--ink); color: var(--ink); text-align: center; }
+.theme-card.active { outline: 4px solid #ffbe0b; }
+.theme-card svg { width: 100%; border-radius: 12px; display: block; }
+.theme-card h3 { margin: 8px 0; font-size: 17px; }
+.theme-card .btn { width: 100%; padding: 8px; font-size: 15px; box-shadow: 0 3px 0 var(--ink); }
+
+/* ---------- tema escuro ---------- */
+body.dark { background: radial-gradient(circle at 50% 0%, #2a2550 0%, var(--bg) 55%, var(--bg2) 100%); }
+body.dark .tutorial { color: var(--ink); }
+body.dark .lvl.locked { background: #3a3560; border-color: #554f84; box-shadow: 0 5px 0 #554f84; color: var(--muted); }

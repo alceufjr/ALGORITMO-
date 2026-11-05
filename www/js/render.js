@@ -20,6 +20,7 @@ export class Renderer {
     this.hint = null;       // {ropeId,end,to,t0}
     this.particles = [];
     this.showMarkers = false;
+    this.board = { peg: '#d8cdc6', pegInner: '#cbbfb7', outline: '#2b1d1a' }; // cores do tema
     this.winT = 0;
     this.dirty = true;
     this.resize();
@@ -128,17 +129,16 @@ export class Renderer {
     const g = this.g;
 
     // furos
-    const occ = new Set(g.ropes.flatMap((r) => r.ends));
     g.pegs.forEach((_, i) => {
       const p = this.pegPos(i);
       const target = this.drag && this.drag.target === i;
       ctx.beginPath();
       ctx.arc(p.x, p.y, this.pegR, 0, Math.PI * 2);
-      ctx.fillStyle = target ? '#ffe9a8' : '#d8cdc6';
+      ctx.fillStyle = target ? '#ffe9a8' : this.board.peg;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(p.x, p.y + 1.5, this.pegR * 0.78, 0, Math.PI * 2);
-      ctx.fillStyle = target ? '#ffd45c' : occ.has(i) ? '#c9bdb5' : '#cbbfb7';
+      ctx.fillStyle = target ? '#ffd45c' : this.board.pegInner;
       ctx.fill();
       if (target) {
         ctx.lineWidth = 3;
@@ -204,7 +204,7 @@ export class Renderer {
     const so = lifted ? 7 : 3;
     ctx.beginPath(); ctx.moveTo(a.x + so * 0.4, a.y + so); ctx.lineTo(b.x + so * 0.4, b.y + so); ctx.stroke();
     // contorno
-    ctx.strokeStyle = '#2b1d1a';
+    ctx.strokeStyle = this.board.outline;
     ctx.lineWidth = w + 4;
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     // corpo
@@ -242,7 +242,7 @@ export class Renderer {
     const y = p.y - (lifted ? 4 : 0);
     ctx.beginPath();
     ctx.arc(p.x, y, R + 2, 0, Math.PI * 2);
-    ctx.fillStyle = '#2b1d1a';
+    ctx.fillStyle = this.board.outline;
     ctx.fill();
     ctx.beginPath();
     ctx.arc(p.x, y, R, 0, Math.PI * 2);
@@ -292,7 +292,7 @@ export class Renderer {
     ctx.arc(x, y, this.pegR * 0.75, 0, Math.PI * 2);
     ctx.fillStyle = '#fff';
     ctx.fill();
-    ctx.strokeStyle = '#2b1d1a';
+    ctx.strokeStyle = this.board.outline;
     ctx.lineWidth = 3;
     ctx.stroke();
     ctx.restore();

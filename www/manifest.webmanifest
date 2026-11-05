@@ -1,6 +1,6 @@
 {
-  "name": "Desenrola! — Puzzle de Cordas",
-  "short_name": "Desenrola!",
+  "name": "Desata! — Puzzle de Cordas",
+  "short_name": "Desata!",
   "description": "Arraste as pontas e desfaça os nós. Centenas de fases com dificuldade progressiva.",
   "start_url": "./index.html",
   "display": "standalone",

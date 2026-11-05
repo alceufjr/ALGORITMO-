@@ -29,11 +29,12 @@ export function levelParams(n) {
   const scramble = clamp(1 + Math.floor((n - 1) / 2.2), 1, ropes + 8);
   const minConflicts = Math.max(1, Math.floor(ropes * lerp(0.5, 1.4, t)));
   const maxLen = lerp(1.6, 5, t);
-  let tier = 'Fácil';
-  if (n > 12) tier = 'Médio';
-  if (n > 30) tier = 'Difícil';
-  if (n > 60) tier = 'Expert';
-  if (n > 100) tier = 'Mestre';
+  // chave de tradução do nível (ver i18n.js)
+  let tier = 'easy';
+  if (n > 12) tier = 'medium';
+  if (n > 30) tier = 'hard';
+  if (n > 60) tier = 'expert';
+  if (n > 100) tier = 'master';
   // quão "agressivo" é o embaralhamento (amostras por passo): 2 no início, 10 no fim
   const greed = Math.round(lerp(2, 10, t));
   return { n, ropes, spare, cols, rows, cells, scramble, minConflicts, maxLen, greed, tier };
@@ -172,12 +173,16 @@ function exactPar(pegs, ends, upper) {
 
 const cache = new Map();
 
-/** Gera (de forma determinística) a fase n. */
-export function generateLevel(n) {
-  if (cache.has(n)) return JSON.parse(JSON.stringify(cache.get(n)));
+/**
+ * Gera (de forma determinística) a fase n.
+ * salt != 0 cria uma variação diferente com a MESMA dificuldade (usado no desafio diário).
+ */
+export function generateLevel(n, salt = 0) {
+  const key = `${n}:${salt}`;
+  if (cache.has(key)) return JSON.parse(JSON.stringify(cache.get(key)));
   const p = levelParams(n);
   for (let attempt = 0; attempt < 400; attempt++) {
-    const rng = new Rng(hashSeed(0xC0DA, n, attempt));
+    const rng = new Rng(salt ? hashSeed(0xDA1E, salt, n, attempt) : hashSeed(0xC0DA, n, attempt));
     const solved = buildSolved(p, rng);
     if (!solved) continue;
     const { pegs, ends } = solved;
@@ -188,21 +193,41 @@ export function generateLevel(n) {
 
     const upper = Math.min(moves.length, movesToSolution(ends, solution));
     const par = exactPar(pegs, ends.map((e) => e.slice()), upper);
-    const colors = rng.shuffle(PALETTE.slice());
+    const colors = rng.shuffle(PALETTE.map((_, i) => i)); // índices: o tema escolhe a cor
     const level = {
       n,
       tier: p.tier,
       cols: p.cols,
       rows: p.rows,
       pegs,
-      ropes: ends.map((e, i) => ({ color: colors[i % colors.length], a: e[0], b: e[1] })),
+      ropes: ends.map((e, i) => ({ c: colors[i % colors.length], a: e[0], b: e[1] })),
       par,
       solution,               // um estado final resolvido (para testes/depuração)
       scrambleMoves: moves.length,
       startConflicts: conflicts,
     };
-    cache.set(n, level);
+    cache.set(key, level);
     return JSON.parse(JSON.stringify(level));
   }
   throw new Error('Falha ao gerar fase ' + n);
+}
+
+// ------------------------------------------------------------ desafio diário
+export function todayKey(d = new Date()) {
+  const p = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Dificuldade sobe ao longo da semana: segunda mais leve, domingo mais pesado. */
+export function dailyDifficulty(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dow = (new Date(y, m - 1, d).getDay() + 6) % 7; // 0 = segunda
+  return 16 + dow * 5;                                   // equivale às fases 16..46
+}
+
+export function generateDaily(dateKey) {
+  const salt = Number(dateKey.replace(/-/g, '')); // ex.: 20261105
+  const level = generateLevel(dailyDifficulty(dateKey), salt);
+  level.daily = dateKey;
+  return level;
 }

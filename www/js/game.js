@@ -2,10 +2,11 @@
 import { analyze, countConflicts } from './core.js';
 
 export class Game {
-  constructor(level) {
+  constructor(level, palette = null) {
     this.level = level;
     this.pegs = level.pegs;
-    this.ropes = level.ropes.map((r, i) => ({ id: i, color: r.color, ends: [r.a, r.b] }));
+    const color = (r) => (palette ? palette[r.c % palette.length] : r.color || '#888888');
+    this.ropes = level.ropes.map((r, i) => ({ id: i, color: color(r), ends: [r.a, r.b] }));
     this.order = this.ropes.map((r) => r.id); // ordem de desenho (último = por cima)
     this.moves = 0;
     this.history = [];

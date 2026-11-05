@@ -2,7 +2,7 @@
 //  CONFIGURAÇÃO CENTRAL DO JOGO — edite aqui antes de publicar
 // ============================================================
 export const CONFIG = {
-  appName: 'Desenrola!',
+  appName: 'Desata!',
   version: '1.0.0',
 
   ads: {

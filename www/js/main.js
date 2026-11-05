@@ -1,18 +1,23 @@
 import { CONFIG } from './config.js';
-import { generateLevel } from './levels.js';
+import { generateLevel, generateDaily, todayKey } from './levels.js';
 import { Game } from './game.js';
 import { Renderer } from './render.js';
 import { Store } from './storage.js';
 import { Sfx } from './audio.js';
 import { Ads } from './ads.js';
+import { t, setLang, getLang, detectLang, LANGS, applyI18n } from './i18n.js';
+import { THEMES, themeById, applyThemeUI } from './themes.js';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#board');
 const renderer = new Renderer(canvas);
 let game = null;
-let current = 1;
+let current = 1;          // fase atual (modo campanha)
+let mode = 'campaign';    // 'campaign' | 'daily'
 let inputLocked = false;
 let markersOn = false;
+
+const theme = () => themeById(Store.data.theme);
 
 // ------------------------------------------------------------- telas
 function show(id) {
@@ -20,23 +25,32 @@ function show(id) {
   if (id === 'play') requestAnimationFrame(() => renderer.resize());
   if (id === 'home') refreshHome();
   if (id === 'levels') buildLevelGrid();
+  if (id === 'styles') buildThemeGrid();
 }
+const isOpen = (id) => !$(id).classList.contains('hidden');
 
-function toast(msg, ms = 1600) {
-  const t = $('#toast');
-  t.textContent = msg;
-  t.classList.remove('hidden');
+function toast(msg, ms = 1800) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.remove('hidden');
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => t.classList.add('hidden'), ms);
+  toast._t = setTimeout(() => el.classList.add('hidden'), ms);
 }
 
 function refreshHome() {
   const d = Store.data;
   $('#playLevel').textContent = d.unlocked > 1 ? `· ${d.unlocked}` : '';
-  $('#totalStars').textContent = Store.totalStars();
+  $('#totalStars').textContent = t('stars_won', { n: Store.totalStars() });
   $('#btnSound').classList.toggle('off', !d.sound);
   $('#btnVibe').classList.toggle('off', !d.vibration);
   $('#btnNoAds').classList.toggle('hidden', !CONFIG.iap.enabled || d.noAds);
+  $('#btnLang').textContent = getLang().toUpperCase();
+  const today = todayKey();
+  const done = !!d.daily.done[today];
+  const streak = Store.currentStreak(today);
+  $('#btnDaily').classList.toggle('done', done);
+  $('#dailyLabel').textContent = done ? t('daily_done_btn') : t('daily');
+  $('#dailyStreak').textContent = streak > 0 ? t('streak', { n: streak }) : '';
 }
 
 function buildLevelGrid() {
@@ -60,26 +74,100 @@ function buildLevelGrid() {
   });
 }
 
+// mini-prévia do tema: 3 cordas cruzadas sobre o fundo do tema
+function themePreview(th) {
+  const c = th.palette;
+  const o = th.board.outline;
+  const rope = (x1, y1, x2, y2, col) =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${o}" stroke-width="11" stroke-linecap="round"/>
+     <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="7" stroke-linecap="round"/>
+     <circle cx="${x1}" cy="${y1}" r="9" fill="${col}" stroke="${o}" stroke-width="3"/>
+     <circle cx="${x2}" cy="${y2}" r="9" fill="${col}" stroke="${o}" stroke-width="3"/>`;
+  return `<svg viewBox="0 0 140 90">
+    <rect width="140" height="90" fill="${th.ui.bg}"/>
+    <circle cx="70" cy="18" r="8" fill="${th.board.peg}"/><circle cx="70" cy="72" r="8" fill="${th.board.peg}"/>
+    ${rope(20, 18, 120, 72, c[0])}${rope(20, 72, 120, 18, c[1])}${rope(45, 45, 100, 45, c[3])}
+  </svg>`;
+}
+
+function buildThemeGrid() {
+  const d = Store.data;
+  const stars = Store.totalStars();
+  $('#stylesStars').textContent = stars;
+  const grid = $('#themeGrid');
+  grid.innerHTML = '';
+  for (const th of THEMES) {
+    const owned = d.ownedThemes.includes(th.id) || th.unlock.type === 'free' ||
+      (th.unlock.type === 'stars' && stars >= th.unlock.n);
+    const active = d.theme === th.id;
+    const card = document.createElement('div');
+    card.className = 'theme-card' + (active ? ' active' : '');
+    let label;
+    if (active) label = t('equipped');
+    else if (owned) label = t('equip');
+    else if (th.unlock.type === 'stars') label = t('unlock_stars', { n: th.unlock.n });
+    else label = t('unlock_ad');
+    card.innerHTML = `${themePreview(th)}<h3>${t('theme_' + th.id)}</h3>
+      <button class="btn ${owned && !active ? 'primary' : ''}" ${active ? 'disabled' : ''}>${label}</button>`;
+    card.querySelector('button').onclick = async () => {
+      Sfx.click();
+      if (owned) return equipTheme(th.id);
+      if (th.unlock.type === 'stars') return toast(t('need_stars', { n: th.unlock.n - stars }));
+      if (await Ads.rewarded()) {
+        Store.set({ ownedThemes: [...new Set([...d.ownedThemes, th.id])] });
+        toast(t('theme_unlocked'));
+        equipTheme(th.id);
+      } else toast(t('ad_unavailable'));
+    };
+    grid.appendChild(card);
+  }
+}
+
+function equipTheme(id) {
+  const d = Store.data;
+  Store.set({ theme: id, ownedThemes: [...new Set([...d.ownedThemes, id])] });
+  applyTheme();
+  buildThemeGrid();
+}
+
+function applyTheme() {
+  const th = theme();
+  applyThemeUI(th);
+  renderer.board = th.board;
+  renderer.dirty = true;
+}
+
 // ------------------------------------------------------------- partida
-function startLevel(n) {
-  current = n;
-  game = new Game(generateLevel(n));
+function begin(level) {
+  game = new Game(level, theme().palette);
   inputLocked = false;
   renderer.setGame(game);
-  renderer.showMarkers = n <= 3 || markersOn;
-  $('#tutorial').classList.toggle('hidden', n > 2);
+  renderer.showMarkers = (mode === 'campaign' && current <= 3) || markersOn;
+  $('#tutorial').classList.toggle('hidden', !(mode === 'campaign' && current <= 2));
   show('play');
   updateHud();
+}
+
+function startLevel(n) {
+  mode = 'campaign';
+  current = n;
+  begin(generateLevel(n));
   if (n === 1) setTimeout(() => showHint(true), 900);
 }
 
+function startDaily() {
+  mode = 'daily';
+  begin(generateDaily(todayKey()));
+}
+
 function updateHud() {
-  $('#hudLevel').textContent = current;
-  $('#hudTier').textContent = game.level.tier;
+  $('#hudTitle').textContent = mode === 'daily' ? t('daily_title') : t('level', { n: current });
+  const date = new Date().toLocaleDateString(getLang() === 'pt' ? 'pt-BR' : getLang(), { day: 'numeric', month: 'short' });
+  $('#hudTier').textContent = mode === 'daily' ? `${date} · ${t('tier_' + game.level.tier)}` : t('tier_' + game.level.tier);
   $('#hudMoves').textContent = game.moves;
   $('#hudPar').textContent = game.level.par;
   $('#hudKnots').textContent = game.conflicts;
-  $('#hudKnotsLabel').textContent = game.conflicts === 1 ? 'cruzamento' : 'cruzamentos';
+  $('#hudKnotsLabel').textContent = game.conflicts === 1 ? t('crossing_one') : t('crossing_many');
   $('.knots').classList.toggle('done', game.conflicts === 0);
   $('#hintCount').textContent = Store.data.hints > 0 ? Store.data.hints : '+';
   $('#btnUndo').disabled = game.history.length === 0;
@@ -93,26 +181,36 @@ function onWin() {
   renderer.winT = performance.now();
   renderer.burst();
   const stars = game.stars();
-  Store.completeLevel(current, stars);
-  let bonus = false;
-  if (current % CONFIG.hints.bonusEveryLevels === 0 && !Store.data[`bonus${current}`]) {
-    Store.set({ hints: Store.data.hints + 1, [`bonus${current}`]: true });
-    bonus = true;
+  let bonus = '';
+  if (mode === 'daily') {
+    const first = Store.completeDaily(game.level.daily, stars);
+    if (first) { Store.set({ hints: Store.data.hints + 1 }); bonus = t('daily_reward'); }
+  } else {
+    Store.completeLevel(current, stars);
+    if (current % CONFIG.hints.bonusEveryLevels === 0 && !Store.data[`bonus${current}`]) {
+      Store.set({ hints: Store.data.hints + 1, [`bonus${current}`]: true });
+      bonus = t('bonus_hint');
+    }
   }
   setTimeout(() => {
     renderer.winT = 0;
     $('#winStars').querySelectorAll('span').forEach((s, i) => s.classList.toggle('on', i < stars));
-    $('#winText').textContent = `${game.moves} jogada${game.moves === 1 ? '' : 's'} · meta ${game.level.par}`;
+    let text = t('moves_line', { m: game.moves, p: game.level.par });
+    if (mode === 'daily') text += ` · ${t('streak', { n: Store.currentStreak(todayKey()) })}\n${t('daily_win')}`;
+    $('#winText').innerText = text;
+    $('#winBonus').textContent = bonus;
     $('#winBonus').classList.toggle('hidden', !bonus);
+    $('#btnNext').textContent = mode === 'daily' ? t('home') : t('next');
     $('#winModal').classList.remove('hidden');
   }, 1100);
 }
 
 async function nextLevel() {
   $('#winModal').classList.add('hidden');
-  const since = await Ads.levelCompleted(current);
+  const since = await Ads.levelCompleted(mode === 'daily' ? 99 : current);
   Store.set({ levelsSinceAd: since });
-  startLevel(current + 1);
+  if (mode === 'daily') show('home');
+  else startLevel(current + 1);
 }
 
 function showHint(free = false) {
@@ -121,7 +219,7 @@ function showHint(free = false) {
   if (!h) return;
   if (!free) {
     if (Store.data.hints <= 0) {
-      $('#hintReward').textContent = CONFIG.hints.perRewarded;
+      $('#hintModalBody').innerHTML = t('no_hints_body', { n: CONFIG.hints.perRewarded });
       $('#hintModal').classList.remove('hidden');
       return;
     }
@@ -164,13 +262,12 @@ function endDrag(e) {
   if (!d || d.pid !== e.pointerId) return;
   renderer.drag = null;
   const before = game.conflicts;
+  renderer.snap = { ropeId: d.ropeId, end: d.end, x: d.x, y: d.y, t0: performance.now() };
   if (d.target >= 0 && game.move(d.ropeId, d.end, d.target)) {
-    renderer.snap = { ropeId: d.ropeId, end: d.end, x: d.x, y: d.y, t0: performance.now() };
     if (game.conflicts < before) Sfx.untangle(); else Sfx.drop();
     updateHud();
     if (game.solved) onWin();
   } else {
-    renderer.snap = { ropeId: d.ropeId, end: d.end, x: d.x, y: d.y, t0: performance.now() };
     Sfx.cancel();
   }
 }
@@ -182,11 +279,24 @@ document.querySelectorAll('[data-go]').forEach((b) =>
   b.addEventListener('click', () => { Sfx.click(); show(b.dataset.go); }));
 
 $('#btnPlay').onclick = () => { Sfx.click(); startLevel(Store.data.unlocked); };
+$('#btnDaily').onclick = () => { Sfx.click(); startDaily(); };
 $('#btnLevels').onclick = () => { Sfx.click(); show('levels'); };
+$('#btnStyles').onclick = () => { Sfx.click(); show('styles'); };
+$('#btnLang').onclick = () => {
+  const next = LANGS[(LANGS.indexOf(getLang()) + 1) % LANGS.length];
+  Store.set({ lang: next });
+  setLang(next);
+  Sfx.click();
+  refreshHome();
+};
 $('#btnSound').onclick = () => { Store.set({ sound: !Store.data.sound }); applySettings(); Sfx.click(); refreshHome(); };
 $('#btnVibe').onclick = () => { Store.set({ vibration: !Store.data.vibration }); applySettings(); Sfx.buzz(30); refreshHome(); };
 $('#btnUndo').onclick = () => { if (!inputLocked && game.undo()) { Sfx.click(); updateHud(); } };
-$('#btnRestart').onclick = () => { if (!inputLocked) { Sfx.click(); startLevel(current); } };
+$('#btnRestart').onclick = () => {
+  if (inputLocked) return;
+  Sfx.click();
+  if (mode === 'daily') startDaily(); else startLevel(current);
+};
 $('#btnMarkers').onclick = () => {
   markersOn = !renderer.showMarkers;
   renderer.showMarkers = markersOn;
@@ -195,22 +305,26 @@ $('#btnMarkers').onclick = () => {
 };
 $('#btnHint').onclick = () => { Sfx.click(); showHint(); };
 $('#btnNext').onclick = () => { Sfx.click(); nextLevel(); };
-$('#btnReplay').onclick = () => { Sfx.click(); $('#winModal').classList.add('hidden'); startLevel(current); };
+$('#btnReplay').onclick = () => {
+  Sfx.click();
+  $('#winModal').classList.add('hidden');
+  if (mode === 'daily') startDaily(); else startLevel(current);
+};
 $('#btnHintCancel').onclick = () => $('#hintModal').classList.add('hidden');
 $('#btnHintWatch').onclick = async () => {
   $('#hintModal').classList.add('hidden');
   const ok = await Ads.rewarded();
   if (ok) {
     Store.set({ hints: Store.data.hints + CONFIG.hints.perRewarded });
-    toast(`+${CONFIG.hints.perRewarded} dicas 💡`);
+    toast(t('hints_plus', { n: CONFIG.hints.perRewarded }));
     updateHud();
   } else {
-    toast('Anúncio indisponível. Tente novamente.');
+    toast(t('ad_unavailable'));
   }
 };
 $('#btnNoAds').onclick = async () => {
-  // Integração de compra: ver docs/PUBLICACAO.md (RevenueCat / cordova-plugin-purchase).
-  toast('Compra ainda não configurada');
+  // Integração de compra: ver docs/PUBLICACAO.md (RevenueCat).
+  toast(t('purchase_na'));
 };
 
 function applySettings() {
@@ -230,6 +344,9 @@ window.addEventListener('resize', () => renderer.resize());
 
 // ------------------------------------------------------------- inicialização
 async function boot() {
+  setLang(Store.data.lang || detectLang());
+  applyI18n();
+  applyTheme();
   applySettings();
   refreshHome();
   requestAnimationFrame(frame);
@@ -249,23 +366,23 @@ async function boot() {
 
   // Botão "voltar" do Android
   const cap = window.Capacitor;
-  if (cap && cap.isNativePlatform && cap.isNativePlatform() && cap.registerPlugin) {
+  const native = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
+  if (native && cap.registerPlugin) {
     const App = cap.registerPlugin('App');
     App.addListener('backButton', () => {
-      if (!$('#winModal').classList.contains('hidden')) return;
-      if (!$('#hintModal').classList.contains('hidden')) { $('#hintModal').classList.add('hidden'); return; }
+      if (isOpen('#winModal')) return;
+      if (isOpen('#hintModal')) { $('#hintModal').classList.add('hidden'); return; }
       if ($('#home').classList.contains('active')) App.exitApp();
       else show('home');
     });
   }
 
   // PWA offline (somente web)
-  if ('serviceWorker' in navigator && !(cap && cap.isNativePlatform && cap.isNativePlatform()) && location.protocol === 'https:') {
+  if ('serviceWorker' in navigator && !native && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 }
 boot();
 
-// Ganchos para depuração no console
-window.__desenrola = { startLevel, get game() { return game; }, Store };
-window.__desenrolaRenderer = renderer;
+// Ganchos para testes/depuração no console
+window.__desata = { startLevel, startDaily, get game() { return game; }, Store, renderer };

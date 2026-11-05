@@ -8,6 +8,7 @@
 // O resto do jogo só chama: Ads.init(), Ads.levelCompleted(), Ads.rewarded().
 // ==========================================================================
 import { CONFIG } from './config.js';
+import { t } from './i18n.js';
 
 const cap = window.Capacitor;
 const isNative = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
@@ -97,10 +98,10 @@ function mockAd(kind) {
     const el = document.createElement('div');
     el.className = 'mock-ad';
     let left = kind === 'rewarded' ? 5 : 3;
-    el.innerHTML = `<div class="mock-ad-box"><small>ANÚNCIO DE TESTE</small>
-      <h3>${kind === 'rewarded' ? 'Anúncio premiado' : 'Intersticial'}</h3>
-      <p>Aqui aparecerá um anúncio real do AdMob/AdSense.</p>
-      <button class="btn" disabled>Fechar em <b>${left}</b></button></div>`;
+    el.innerHTML = `<div class="mock-ad-box"><small>${t('ad_test')}</small>
+      <h3>${kind === 'rewarded' ? t('ad_rewarded') : t('ad_interstitial')}</h3>
+      <p>${t('ad_body')}</p>
+      <button class="btn" disabled>${t('close_in')} <b>${left}</b></button></div>`;
     document.body.appendChild(el);
     const btn = el.querySelector('button');
     const timer = setInterval(() => {
@@ -108,7 +109,7 @@ function mockAd(kind) {
       if (left > 0) { btn.querySelector('b').textContent = left; return; }
       clearInterval(timer);
       btn.disabled = false;
-      btn.textContent = kind === 'rewarded' ? 'Receber recompensa' : 'Fechar';
+      btn.textContent = kind === 'rewarded' ? t('claim') : t('close');
     }, 1000);
     btn.onclick = () => { el.remove(); resolve(true); };
   });

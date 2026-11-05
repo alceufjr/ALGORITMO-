@@ -2,7 +2,8 @@
 // verificada e ficar progressivamente mais difícil.
 // Uso: node tests/levels.test.js
 import assert from 'node:assert/strict';
-import { generateLevel, levelParams } from '../www/js/levels.js';
+import { generateLevel, levelParams, generateDaily, dailyDifficulty } from '../www/js/levels.js';
+import { THEMES } from '../www/js/themes.js';
 import { countConflicts, conflictPoint } from '../www/js/core.js';
 import { Game } from '../www/js/game.js';
 
@@ -76,6 +77,28 @@ for (let n = 1; n <= 10; n++) {
   g.undo();
   assert.equal(JSON.stringify(g.ends), before, 'undo não restaurou');
   assert.equal(g.moves, 0);
+}
+
+// 9) desafio diário: determinístico, diferente da campanha, dificuldade cresce na semana
+{
+  const a = generateDaily('2026-11-05'), b = generateDaily('2026-11-05'), c = generateDaily('2026-11-06');
+  assert.deepEqual(a, b, 'diário não determinístico');
+  assert.notDeepEqual(a.ropes, c.ropes, 'dias diferentes geraram a mesma fase');
+  assert.notDeepEqual(a.ropes, generateLevel(a.n).ropes, 'diário igual à campanha');
+  assert.ok(countConflicts(a.pegs, a.ropes.map((r) => [r.a, r.b])) > 0);
+  assert.ok(dailyDifficulty('2026-11-08') > dailyDifficulty('2026-11-02'), 'domingo deveria ser mais difícil que segunda');
+  for (let d = 1; d <= 60; d++) {
+    const key = `2027-${String(1 + (d % 12)).padStart(2, '0')}-${String(1 + (d % 28)).padStart(2, '0')}`;
+    const L = generateDaily(key);
+    assert.equal(countConflicts(L.pegs, L.solution), 0, `diário ${key}: solução inválida`);
+  }
+}
+
+// 10) temas: 16 cores distintas e válidas cada
+for (const th of THEMES) {
+  assert.equal(th.palette.length, 16, `tema ${th.id}`);
+  assert.equal(new Set(th.palette).size, 16, `tema ${th.id}: cores repetidas`);
+  th.palette.forEach((c) => assert.match(c, /^#[0-9a-f]{6}$/i));
 }
 
 console.table(rows);
