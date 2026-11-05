@@ -1,0 +1,17 @@
+{
+  "appId": "com.seunome.desata",
+  "appName": "Desata!",
+  "webDir": "www",
+  "backgroundColor": "#f6ebe3",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never"
+  },
+  "plugins": {
+    "AdMob": {
+      "requestTrackingAuthorization": true
+    }
+  }
+}

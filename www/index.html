@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#f6ebe3">
+  <meta name="description" content="Desata! — puzzle relaxante: arraste as pontas e desfaça os nós das cordas.">
+  <title>Desata!</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-512.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===================== MENU ===================== -->
+    <section id="home" class="screen active">
+      <button id="btnLang" class="btn icon lang" data-i18n-aria="a_lang">PT</button>
+      <div class="logo">
+        <svg viewBox="0 0 200 120" aria-hidden="true">
+          <path d="M20 95 C60 10, 120 120, 180 25" stroke="#2b1d1a" stroke-width="22" fill="none" stroke-linecap="round"/>
+          <path d="M20 95 C60 10, 120 120, 180 25" stroke="#3a86ff" stroke-width="15" fill="none" stroke-linecap="round"/>
+          <path d="M25 25 C80 120, 130 0, 175 95" stroke="#2b1d1a" stroke-width="22" fill="none" stroke-linecap="round"/>
+          <path d="M25 25 C80 120, 130 0, 175 95" stroke="#ff4d6d" stroke-width="15" fill="none" stroke-linecap="round"/>
+          <circle cx="20" cy="95" r="14" fill="#3a86ff" stroke="#2b1d1a" stroke-width="4"/>
+          <circle cx="180" cy="25" r="14" fill="#3a86ff" stroke="#2b1d1a" stroke-width="4"/>
+          <circle cx="25" cy="25" r="14" fill="#ff4d6d" stroke="#2b1d1a" stroke-width="4"/>
+          <circle cx="175" cy="95" r="14" fill="#ff4d6d" stroke="#2b1d1a" stroke-width="4"/>
+        </svg>
+        <h1>Desata!</h1>
+        <p class="tag" data-i18n="tagline"></p>
+      </div>
+      <div class="menu">
+        <button id="btnPlay" class="btn big primary"><span data-i18n="play"></span> <span id="playLevel"></span></button>
+        <button id="btnDaily" class="btn daily"><span id="dailyLabel" data-i18n="daily"></span><small id="dailyStreak"></small></button>
+        <div class="row">
+          <button id="btnLevels" class="btn" data-i18n="levels"></button>
+          <button id="btnStyles" class="btn" data-i18n="styles"></button>
+        </div>
+        <div class="row">
+          <button id="btnSound" class="btn icon" data-i18n-aria="a_sound">🔊</button>
+          <button id="btnVibe" class="btn icon" data-i18n-aria="a_vibe">📳</button>
+          <button id="btnNoAds" class="btn icon hidden" data-i18n-aria="a_noads">🚫</button>
+        </div>
+        <p class="stats" id="totalStars"></p>
+      </div>
+      <a class="privacy" href="privacidade.html" data-i18n="privacy"></a>
+    </section>
+
+    <!-- ===================== FASES ===================== -->
+    <section id="levels" class="screen">
+      <header class="bar">
+        <button class="btn icon back" data-go="home" data-i18n-aria="a_back">←</button>
+        <h2 data-i18n="levels"></h2>
+        <span class="pill"><span id="levelsStars">0</span> ★</span>
+      </header>
+      <div id="levelGrid" class="level-grid"></div>
+    </section>
+
+    <!-- ===================== ESTILOS ===================== -->
+    <section id="styles" class="screen">
+      <header class="bar">
+        <button class="btn icon back" data-go="home" data-i18n-aria="a_back">←</button>
+        <h2 data-i18n="styles"></h2>
+        <span class="pill"><span id="stylesStars">0</span> ★</span>
+      </header>
+      <div id="themeGrid" class="theme-grid"></div>
+    </section>
+
+    <!-- ===================== JOGO ===================== -->
+    <section id="play" class="screen">
+      <header class="bar">
+        <button class="btn icon back" data-go="home" data-i18n-aria="a_menu">☰</button>
+        <div class="title">
+          <h2 id="hudTitle"></h2>
+          <small id="hudTier"></small>
+        </div>
+        <span class="pill">⟲ <span id="hudMoves">0</span>/<span id="hudPar">0</span></span>
+      </header>
+      <div class="knots"><span id="hudKnots">0</span> <span id="hudKnotsLabel"></span></div>
+      <p id="tutorial" class="tutorial hidden"></p>
+      <div id="boardWrap" class="board-in"><canvas id="board"></canvas></div>
+      <footer class="bar bottom">
+        <button id="btnUndo" class="btn icon" data-i18n-aria="a_undo">↶<span id="undoCount" class="badge undo">3</span></button>
+        <button id="btnRestart" class="btn icon" data-i18n-aria="a_restart">⟳</button>
+        <button id="btnMarkers" class="btn icon" data-i18n-aria="a_markers">✖</button>
+        <button id="btnHint" class="btn icon hint" data-i18n-aria="a_hint">💡<span id="hintCount" class="badge">3</span></button>
+      </footer>
+    </section>
+
+    <!-- ===================== MODAIS ===================== -->
+    <div id="winModal" class="modal hidden">
+      <div class="card">
+        <h2 data-i18n="win_title"></h2>
+        <p id="winPerfect" class="perfect hidden"></p>
+        <div id="winStars" class="stars"><span>★</span><span>★</span><span>★</span></div>
+        <p id="winText"></p>
+        <p id="winBonus" class="bonus hidden"></p>
+        <div class="row">
+          <button id="btnReplay" class="btn" data-i18n="replay"></button>
+          <button id="btnNext" class="btn primary"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="hintModal" class="modal hidden">
+      <div class="card">
+        <h2 id="hintModalTitle"></h2>
+        <p id="hintModalBody"></p>
+        <div class="row">
+          <button id="btnHintCancel" class="btn" data-i18n="not_now"></button>
+          <button id="btnHintWatch" class="btn primary" data-i18n="watch"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

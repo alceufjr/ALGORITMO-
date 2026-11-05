@@ -1,0 +1,28 @@
+{
+  "name": "desata",
+  "version": "1.0.0",
+  "description": "Desata! — puzzle de desembaraçar cordas com fases procedurais e dificuldade progressiva (Web, Android, iOS).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "npx --yes serve www -l 8080",
+    "test": "node tests/levels.test.js",
+    "test:e2e": "node tests/e2e.test.js",
+    "icons": "node scripts/make-icons.js",
+    "android": "npx cap sync android && npx cap open android",
+    "ios": "npx cap sync ios && npx cap open ios",
+    "sync": "npx cap sync",
+    "zip:web": "cd www && zip -r ../desata-web.zip ."
+  },
+  "dependencies": {
+    "@capacitor-community/admob": "^7.0.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0"
+  }
+}
