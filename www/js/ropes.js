@@ -139,6 +139,11 @@ export function buildRopes(pos, tangles, opt) {
   // 3) Relaxação global (suaviza TODOS os nós da corda para eliminar qualquer quina)
   relaxAndSmooth(ropes, w, tangles);
 
+  // 3b) TENSÃO: a corda é esticada entre as duas bolinhas. Nenhum ponto pode se
+  //     afastar da linha reta mais que o necessário para passar sobre outra corda,
+  //     e nunca para trás das pontas (sem barriga, sem "V", sem folga).
+  for (const R of Object.values(ropes)) enforceTension(R, w * 0.55);
+
   // 4) Interpolação Spline final
   const out = {};
   for (const [id, R] of Object.entries(ropes)) {
@@ -194,6 +199,28 @@ function relaxAndSmooth(ropes, w, tangles) {
         N[k].z += ((N[k - 1].z + N[k + 1].z) * 0.5 - N[k].z) * 0.20;
       }
     }
+  }
+}
+
+function enforceTension(R, maxDev) {
+  const { a, b, len } = R;
+  if (len < 1e-6) return;
+  const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+  for (const nd of R.nodes) {
+    if (nd.pinned) continue;
+    const rx = nd.x - a.x, ry = nd.y - a.y;
+    let along = rx * ux + ry * uy;
+    let lat = -rx * uy + ry * ux;
+    // ao longo: dentro do segmento e próximo da posição original (sem acúmulo de folga)
+    along = Math.max(0, Math.min(len, along));
+    const orig = nd.t * len;
+    along = orig + Math.max(-maxDev, Math.min(maxDev, along - orig));
+    // lateral: no máximo maxDev, com transição suave até as pontas
+    const edge = Math.min(along, len - along);
+    const cap = maxDev * Math.min(1, edge / (maxDev * 3));
+    lat = Math.max(-cap, Math.min(cap, lat));
+    nd.x = a.x + ux * along - uy * lat;
+    nd.y = a.y + uy * along + ux * lat;
   }
 }
 
