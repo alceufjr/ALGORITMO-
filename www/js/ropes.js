@@ -1,25 +1,12 @@
 // =============================================================================
-// Geometria 2.5D das cordas: splines suaves, enrolamento helicoidal e altura (z)
-// -----------------------------------------------------------------------------
-// Cada corda é um cilindro elástico tensionado, discretizado em nós densos.
-//  1. Nós em linha reta entre as pontas (corda esticada).
-//  2. Para cada par enroscado (K != 0 no modelo do jogo), as duas cordas são
-//     defletidas em torno de um EIXO COMUM (bissetriz das duas direções):
-//       lateral(t) = lado · A · cos(π·voltas·t)    (as cordas se aproximam e trocam de lado)
-//       z(t)       = ±sin(π·voltas·t)              (por cima / por baixo, alternando)
-//     misturado com a posição original por uma janela C² (smootherstep), então
-//     a entrada e a saída da torção não têm quinas.
-//  3. Relaxação por restrições (Verlet sem velocidade): mantém as cordas a pelo
-//     menos 1 diâmetro de distância quando estão no MESMO nível z, e suaviza a
-//     curvatura (tensão). Nos cruzamentos (z opostos) uma passa sobre a outra.
-//  4. Reamostragem Catmull-Rom → caminho liso, espessura constante.
+// Geometria 2.5D das cordas: Física de Colisão Contínua + Enrolamento Suave
 // =============================================================================
 
 const smoother = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * x * (x * (x * 6 - 15) + 10));
 const unit = (x, y) => { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; };
 
-/** Reamostra uma polilinha com Catmull-Rom (centrípeta simplificada, uniforme). */
-export function catmullRom(pts, sub = 3) {
+/** Reamostra uma polilinha com Catmull-Rom garantindo curvatura orgânica. */
+export function catmullRom(pts, sub = 4) {
   if (pts.length < 3) return pts.map((p) => ({ ...p }));
   const out = [];
   const P = (i) => pts[Math.max(0, Math.min(pts.length - 1, i))];
@@ -27,8 +14,13 @@ export function catmullRom(pts, sub = 3) {
     const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
     for (let k = 0; k < sub; k++) {
       const t = k / sub, t2 = t * t, t3 = t2 * t;
-      const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
-      out.push({ x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y), z: f(p0.z, p1.z, p2.z, p3.z) });
+      const f = (a, b, c, d) =>
+        0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push({
+        x: f(p0.x, p1.x, p2.x, p3.x),
+        y: f(p0.y, p1.y, p2.y, p3.y),
+        z: f(p0.z, p1.z, p2.z, p3.z),
+      });
     }
   }
   out.push({ ...pts[pts.length - 1] });
@@ -36,218 +28,208 @@ export function catmullRom(pts, sub = 3) {
 }
 
 /**
- * Constrói as cordas.
- * @param pos     {id: [a, b]} pontas na tela
- * @param tangles [{i, j, k, over, x, y, ti, tj, crossing}] (ver Renderer.weave)
- * @param opt     {w: espessura, endR: raio da bolinha, lifted: id arrastado}
- * @returns {id: [{x,y,z}, ...]} caminhos lisos, com altura z por nó
+ * Constrói as cordas com física de entrelaçamento real (estilo Twisted Tangle).
  */
 export function buildRopes(pos, tangles, opt) {
-  const { w, endR, lifted } = opt;
-  const step = Math.max(3, w * 0.45);
+  const { w, lifted } = opt;
+  const step = Math.max(3, w * 0.38); // malha mais densa evita quinas
   const ropes = {};
 
-  // 1) nós densos em linha reta
+  // 1) Nós densos inicialmente em linha reta entre as pontas
   for (const id of Object.keys(pos)) {
     const [a, b] = pos[id];
     const len = Math.hypot(b.x - a.x, b.y - a.y);
-    const n = Math.max(2, Math.ceil(len / step));
+    const n = Math.max(4, Math.ceil(len / step));
     const nodes = [];
     for (let k = 0; k <= n; k++) {
       const t = k / n;
-      nodes.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: 0, t, dx: 0, dy: 0, wsum: 0 });
+      nodes.push({
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+        z: 0,
+        t,
+        pinned: k === 0 || k === n,
+      });
     }
     ropes[id] = { a, b, len, nodes, dir: unit(b.x - a.x, b.y - a.y) };
   }
 
-  // espaço livre em torno de cada enrosco, ao longo de cada corda
-  const per = {};
-  for (const c of tangles) { (per[c.i] ||= []).push(c); (per[c.j] ||= []).push(c); }
-  const room = new Map();
-  for (const [key, arr] of Object.entries(per)) {
-    const r = ropes[key];
-    const tOf = (c) => (c.i === +key ? c.ti : c.tj);
-    arr.sort((x, y) => tOf(x) - tOf(y));
-    arr.forEach((c, k) => {
-      const d = tOf(c) * r.len;
-      const prev = k > 0 ? (d - tOf(arr[k - 1]) * r.len) / 2 : d - endR * 1.1;
-      const next = k < arr.length - 1 ? (tOf(arr[k + 1]) * r.len - d) / 2 : r.len - d - endR * 1.1;
-      room.set(c, Math.min(room.has(c) ? room.get(c) : Infinity, prev, next));
-    });
-  }
-
-  // 2) deflexão helicoidal em torno do eixo comum de cada par
+  // 2) Calcula o entrelaçamento sem esmagar o ângulo natural das cordas
   for (const c of tangles) {
     const turns = Math.min(Math.abs(c.k), 6);
+    if (turns === 0) continue;
+
     const RI = ropes[c.i], RJ = ropes[c.j];
     const d1 = RI.dir;
     let d2 = RJ.dir;
-    const flipJ = d1.x * d2.x + d1.y * d2.y < 0;
+    const dot = d1.x * d2.x + d1.y * d2.y;
+    const flipJ = dot < 0;
     if (flipJ) d2 = { x: -d2.x, y: -d2.y };
-    const u = unit(d1.x + d2.x, d1.y + d2.y);          // eixo comum
+
+    // Eixo médio do par
+    const u = unit(d1.x + d2.x, d1.y + d2.y);
     const nrm = { x: -u.y, y: u.x };
-    const want = w * (1.4 + 1.6 * turns);              // meia-extensão desejada
-    const H = Math.max(w * 0.9, Math.min(want, (room.get(c) ?? want) * 0.95));
-    // raio da hélice: nos lados de cada meia-volta as cordas se afastam 1 diâmetro + contorno,
-    // então a troca por cima/por baixo acontece onde elas NÃO se encostam (sem emendas)
-    const A = Math.min((w + 11) / 2, H * 0.45);
-    const plateau = turns === 1 ? 0.25 : 0.55;          // trecho com hélice "cheia"
+
+    // Zona de influência ampla e suave (evita degraus abruptos)
+    const H = w * (2.2 + 1.4 * turns);
+    // Raio da torção helicoidal (metade do diâmetro para encostarem perfeitamente)
+    const radius = w * 0.48;
 
     for (const id of [c.i, c.j]) {
       const R = ropes[id];
-      const flip = id === c.j && flipJ;
-      const zSign = id === c.over ? 1 : -1;
+      const isOverFirst = id === c.over;
+      const signSide = id === c.i ? 1 : -1;
+      const tCenter = id === c.i ? c.ti : c.tj;
+
       for (const nd of R.nodes) {
-        // coordenadas no sistema do eixo (s ao longo, l lateral) — posição esticada original
-        const ox = R.a.x + (R.b.x - R.a.x) * nd.t, oy = R.a.y + (R.b.y - R.a.y) * nd.t;
-        let s = (ox - c.x) * u.x + (oy - c.y) * u.y;
-        const l0 = (ox - c.x) * nrm.x + (oy - c.y) * nrm.y;
-        if (Math.abs(s) >= H) continue;
-        // janela C²: 1 no meio, 0 nas bordas, derivadas nulas nas bordas
-        const e = (Math.abs(s) / H - plateau) / (1 - plateau);
-        const win = 1 - smoother(e);
-        const tt = (flip ? -s : s) / (2 * H) + 0.5;     // 0..1 no sentido de percurso
-        // lado de entrada: o lado (lateral) em que a corda chega ao início da janela
-        const sIn = flip ? H : -H;
-        const ex = c.x + u.x * sIn, ey = c.y + u.y * sIn;
-        const lIn = projLateral(R, ex, ey, u, nrm, c);
-        const side = Math.abs(lIn) > 1e-6 ? Math.sign(lIn) : (id === c.i ? 1 : -1);
-        const lh = side * A * Math.cos(Math.PI * turns * tt);
-        const lat = l0 + (lh - l0) * win;
-        nd.dx += (c.x + u.x * s + nrm.x * lat) - ox;
-        nd.dy += (c.y + u.y * s + nrm.y * lat) - oy;
-        // altura: alterna a cada meia-volta, sempre começando com "over" por cima
-        nd.z += zSign * Math.sin(Math.PI * turns * tt) * win;
-        nd.wsum = Math.max(nd.wsum, win);
+        if (nd.pinned) continue;
+
+        // Distância ao longo da própria corda até o centro do cruzamento
+        const distAlong = (nd.t - tCenter) * R.len * (id === c.j && flipJ ? -1 : 1);
+        if (Math.abs(distAlong) >= H) continue;
+
+        // uNorm vai de -1 a +1 dentro da zona de torção
+        const uNorm = distAlong / H;
+        // Envelope gaussiano/C² suave (0 nas pontas, 1 no meio, sem quinas)
+        const env = 1 - smoother(Math.abs(uNorm));
+
+        if (turns === 1) {
+          // CRUZAMENTO SIMPLES (1 volta):
+          // A corda mantém sua trajetória, ganhando apenas um leve arco orgânico
+          // (deflexão de tensão) e passando nitidamente por cima/baixo em Z.
+          const zArc = (isOverFirst ? 1 : -1) * Math.cos(uNorm * Math.PI * 0.5);
+          const tensionBow = signSide * (w * 0.18) * env;
+
+          nd.x += nrm.x * tensionBow;
+          nd.y += nrm.y * tensionBow;
+          nd.z += zArc * env;
+        } else {
+          // MÚLTIPLAS VOLTAS (Torção Helicoidal / Espiral):
+          // Aproxima suavemente ambas as cordas para o eixo central e gira em hélice
+          const phase = uNorm * (turns * Math.PI * 0.5); // fase da espiral
+          const pullToAxis = Math.pow(env, 0.7); // puxa suavemente para o feixe central
+
+          // Ponto correspondente no eixo central da torção
+          const axisX = c.x + u.x * distAlong;
+          const axisY = c.y + u.y * distAlong;
+
+          // Deslocamento senoidal da trança (troca de lado a cada meia volta)
+          const braidOffset = signSide * radius * Math.sin(phase + (isOverFirst ? 0 : Math.PI));
+          const targetX = axisX + nrm.x * braidOffset;
+          const targetY = axisY + nrm.y * braidOffset;
+
+          nd.x = nd.x + (targetX - nd.x) * pullToAxis;
+          nd.y = nd.y + (targetY - nd.y) * pullToAxis;
+
+          // Altura Z defasada em 90 graus do deslocamento lateral (hélice 3D real)
+          const zWave = (isOverFirst ? 1 : -1) * Math.cos(phase);
+          nd.z += zWave * env;
+        }
       }
     }
   }
 
-  // tensão: suaviza o campo de deslocamento (laplaciano, pontas fixas) → curvas sem quinas
-  for (const R of Object.values(ropes)) {
-    const N = R.nodes;
-    for (let it = 0; it < 3; it++) {
-      for (let k = 1; k < N.length - 1; k++) {
-        const n = N[k];
-        if (n.wsum <= 0 && N[k - 1].wsum <= 0 && N[k + 1].wsum <= 0) continue;
-        n.dx += ((N[k - 1].dx + N[k + 1].dx) / 2 - n.dx) * 0.5;
-        n.dy += ((N[k - 1].dy + N[k + 1].dy) / 2 - n.dy) * 0.5;
-        n.z += ((N[k - 1].z + N[k + 1].z) / 2 - n.z) * 0.3;
-      }
-    }
-  }
-
-  // aplica deflexões; corda arrastada sobe
+  // Eleva corda sendo arrastada pelo jogador
   for (const [id, R] of Object.entries(ropes)) {
-    const lift = +id === lifted ? 2 : 0;
-    for (const nd of R.nodes) {
-      nd.x += nd.dx; nd.y += nd.dy;
-      nd.z = Math.max(-1.2, Math.min(1.2, nd.z)) + lift;
+    if (+id === lifted) {
+      for (const nd of R.nodes) nd.z += 2.5;
     }
   }
 
-  // 3) relaxação: colisão de cilindros no mesmo nível + tensão (suaviza curvatura)
-  relax(ropes, w, tangles);
+  // 3) Relaxação global (suaviza TODOS os nós da corda para eliminar qualquer quina)
+  relaxAndSmooth(ropes, w);
 
-  // 4) splines
+  // 4) Interpolação Spline final
   const out = {};
-  for (const [id, R] of Object.entries(ropes)) out[id] = catmullRom(R.nodes, 3);
+  for (const [id, R] of Object.entries(ropes)) {
+    out[id] = catmullRom(R.nodes, 4);
+  }
   return out;
 }
 
-function projLateral(R, x, y, u, nrm, c) {
-  // ponto da corda esticada mais próximo de (x,y) projetado no eixo lateral
-  const dx = R.b.x - R.a.x, dy = R.b.y - R.a.y;
-  const l2 = dx * dx + dy * dy || 1;
-  const t = Math.max(0, Math.min(1, ((x - R.a.x) * dx + (y - R.a.y) * dy) / l2));
-  const px = R.a.x + dx * t, py = R.a.y + dy * t;
-  return (px - c.x) * nrm.x + (py - c.y) * nrm.y;
-}
+/**
+ * Suavização global de tensão elástica (Verlet Laplacian) em toda a extensão da corda.
+ */
+function relaxAndSmooth(ropes, w) {
+  const allRopes = Object.values(ropes);
+  const minD = w * 0.96;
 
-function relax(ropes, w, tangles) {
-  const pairs = tangles.map((c) => [ropes[c.i], ropes[c.j]]);
-  const minD = w * 1.02;
-  for (let it = 0; it < 4; it++) {
-    // colisão: só entre nós deslocados (perto dos enroscos) e no mesmo nível de altura
-    for (const [P, Q] of pairs) {
-      for (const p of P.nodes) {
-        if (p.wsum < 0.05) continue;
-        for (const q of Q.nodes) {
-          if (q.wsum < 0.05) continue;
-          if (Math.abs(p.z - q.z) > 0.9) continue;      // um passa por cima do outro: sem colisão
-          const dx = q.x - p.x, dy = q.y - p.y;
-          const d = Math.hypot(dx, dy);
-          if (d >= minD || d < 1e-6) continue;
-          const push = ((minD - d) / 2) * 0.5;
-          const ux = dx / d, uy = dy / d;
-          const kp = p.wsum, kq = q.wsum;
-          p.x -= ux * push * kp; p.y -= uy * push * kp;
-          q.x += ux * push * kq; q.y += uy * push * kq;
+  for (let iter = 0; iter < 8; iter++) {
+    // Colisão suave entre cordas quando estão na mesma altura Z (impede sobreposição paralela feia)
+    for (let i = 0; i < allRopes.length; i++) {
+      for (let j = i + 1; j < allRopes.length; j++) {
+        const P = allRopes[i].nodes, Q = allRopes[j].nodes;
+        // otimização: pula pares de cordas cujas caixas envolventes estão longe
+        // (não muda o resultado: nenhum par de nós ficaria a menos de minD)
+        if (!boxesNear(P, Q, minD)) continue;
+        for (let a = 1; a < P.length - 1; a++) {
+          const p = P[a];
+          for (let b = 1; b < Q.length - 1; b++) {
+            const q = Q[b];
+            // Se uma está claramente por cima da outra (cruzamento), permite passar livremente
+            if (Math.abs(p.z - q.z) > 0.35) continue;
+
+            const dx = q.x - p.x, dy = q.y - p.y;
+            const d = Math.hypot(dx, dy);
+            if (d < minD && d > 1e-5) {
+              const push = (minD - d) * 0.25;
+              const ux = dx / d, uy = dy / d;
+              p.x -= ux * push; p.y -= uy * push;
+              q.x += ux * push; q.y += uy * push;
+            }
+          }
         }
       }
     }
-    // tensão: laplaciano suave nos nós deslocados; pontas fixas
-    for (const R of Object.values(ropes)) {
+
+    // Tensão contínua ao longo de TODA a corda (elimina qualquer dobra/quina na entrada dos cruzamentos)
+    for (const R of allRopes) {
       const N = R.nodes;
       for (let k = 1; k < N.length - 1; k++) {
-        const n = N[k];
-        if (n.wsum < 0.02) continue;
-        const mx = (N[k - 1].x + N[k + 1].x) / 2, my = (N[k - 1].y + N[k + 1].y) / 2;
-        const a = 0.25 * n.wsum;
-        n.x += (mx - n.x) * a; n.y += (my - n.y) * a;
+        N[k].x += ((N[k - 1].x + N[k + 1].x) * 0.5 - N[k].x) * 0.35;
+        N[k].y += ((N[k - 1].y + N[k + 1].y) * 0.5 - N[k].y) * 0.35;
+        N[k].z += ((N[k - 1].z + N[k + 1].z) * 0.5 - N[k].z) * 0.20;
       }
     }
   }
+}
+
+function boxesNear(P, Q, pad) {
+  let ax0 = Infinity, ay0 = Infinity, ax1 = -Infinity, ay1 = -Infinity;
+  for (const p of P) { if (p.x < ax0) ax0 = p.x; if (p.x > ax1) ax1 = p.x; if (p.y < ay0) ay0 = p.y; if (p.y > ay1) ay1 = p.y; }
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (const q of Q) { if (q.x < bx0) bx0 = q.x; if (q.x > bx1) bx1 = q.x; if (q.y < by0) by0 = q.y; if (q.y > by1) by1 = q.y; }
+  return !(ax1 + pad < bx0 || bx1 + pad < ax0 || ay1 + pad < by0 || by1 + pad < ay0);
 }
 
 /**
- * Divide cada corda em trechos contínuos por NÍVEL e devolve a lista ordenada de
- * baixo para cima. O nível de um ponto só muda onde a corda ENCOSTA em outra:
- *   0 = por baixo de alguém, 1 = livre, 2 = por cima de alguém, 3 = arrastada.
- * Como fora das áreas de contato tudo é nível 1, as emendas entre trechos caem em
- * lugares onde a corda não toca nenhuma outra, e ficam invisíveis.
+ * Divide as cordas em micro-segmentos ordenados por altura Z contínua.
+ * Isso garante que o contorno preto da corda de cima corte perfeitamente a corda de baixo.
  */
-export function zRuns(paths, order, touch) {
-  const ids = order.map(String);
-  const lv = {};
-  for (const id of ids) lv[id] = paths[id].map((p) => (p.z > 1.5 ? 3 : 1));
-  // grade espacial para achar contatos rápido
-  const cell = touch;
-  const grid = new Map();
-  const keyOf = (x, y) => `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
-  for (const id of ids) paths[id].forEach((p, k) => {
-    const key = keyOf(p.x, p.y);
-    if (!grid.has(key)) grid.set(key, []);
-    grid.get(key).push([id, k]);
-  });
-  for (const id of ids) {
-    const P = paths[id];
-    P.forEach((p, k) => {
-      if (lv[id][k] === 3) return;
-      let over = false, under = false;
-      const cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell);
-      for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++) {
-        for (const [oid, ok] of grid.get(`${gx},${gy}`) || []) {
-          if (oid === id) continue;
-          const q = paths[oid][ok];
-          if (Math.hypot(q.x - p.x, q.y - p.y) >= touch) continue;
-          if (p.z > q.z + 0.05) over = true; else if (p.z < q.z - 0.05) under = true;
-        }
-      }
-      lv[id][k] = under ? 0 : over ? 2 : 1;
-    });
-  }
+export function zRuns(paths, order) {
   const runs = [];
-  ids.forEach((id, rank) => {
-    const L = lv[id];
-    let start = 0;
-    for (let k = 1; k <= L.length; k++) {
-      if (k === L.length || L[k] !== L[start]) {
-        runs.push({ id, from: Math.max(0, start - 1), to: Math.min(L.length - 1, k), level: L[start], rank });
-        start = k;
-      }
+  const chunkSize = 4; // trechos curtos garantem ordenação Z precisa em espirais apertadas
+
+  order.forEach((id, rank) => {
+    const P = paths[id];
+    for (let k = 0; k < P.length - 1; k += chunkSize) {
+      const from = Math.max(0, k);
+      const to = Math.min(P.length - 1, k + chunkSize);
+      // Calcula o Z médio do sub-segmento
+      let zSum = 0;
+      for (let m = from; m <= to; m++) zSum += P[m].z;
+      const zAvg = zSum / (to - from + 1);
+
+      runs.push({
+        id,
+        from,
+        to,
+        level: Math.round(zAvg * 100), // precisão centesimal de profundidade
+        rank,
+      });
     }
   });
+
   runs.sort((a, b) => a.level - b.level || a.rank - b.rank);
   return runs;
 }

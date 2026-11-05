@@ -301,7 +301,7 @@ export class Renderer {
     }
 
     ctx.lineCap = 'butt';
-    for (const run of zRuns(paths, g.order, w + 5.5)) {
+    for (const run of zRuns(paths, g.order)) {
       const P = paths[run.id];
       const color = g.ropes[run.id].color;
       const body = pulse ? shade(color, 0.25 * pulse) : color;
@@ -309,38 +309,25 @@ export class Renderer {
       if (to <= from) continue;
       const S = arc[run.id];
 
-      // sombra projetada sobre o que está embaixo — aparada nas emendas com a própria
-      // corda (ali ela não toca ninguém) e com pontas redondas, para não deixar corte
-      if (run.level >= 2) {
-        const trim = Math.ceil((w * 1.3) / Math.max(1, (S[to] - S[from]) / Math.max(1, to - from)));
-        const f2 = from === 0 ? 0 : Math.min(to, from + trim);
-        const t2 = to === P.length - 1 ? to : Math.max(f2, to - trim);
-        if (t2 > f2) {
-          ctx.save();
-          ctx.lineCap = 'round';
-          ctx.strokeStyle = 'rgba(0,0,0,.24)';
-          ctx.lineWidth = w + 2;
-          trace(P, f2, t2, 1.5, run.level === 3 ? 8 : 4);
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-      // contorno preto (primeiro), depois a cor
+      // contorno preto (primeiro), depois a cor. A cor avança 2 pontos sobre os
+      // trechos vizinhos da MESMA corda: cobre a cunha que o contorno de um trecho
+      // em "butt" deixa no vizinho quando a corda faz curva (sem emendas em escada)
       ctx.strokeStyle = outline;
       ctx.lineWidth = w + 5;
-      trace(P, from, to); ctx.stroke();
+      trace(P, Math.max(0, from - 1), Math.min(P.length - 1, to + 1)); ctx.stroke(); // fecha fendas
       ctx.strokeStyle = body;
       ctx.lineWidth = w;
-      trace(P, from, to); ctx.stroke();
+      const xf = Math.max(0, from - 2), xt = Math.min(P.length - 1, to + 2);
+      trace(P, xf, xt); ctx.stroke();
 
       // listras diagonais da trança, posicionadas pelo comprimento de arco
       const stepS = w * 0.85, half = w * 0.42;
       ctx.strokeStyle = shade(color, -0.24);
       ctx.lineWidth = Math.max(1.5, w * 0.2);
       ctx.beginPath();
-      let k = from;
-      for (let sv = Math.ceil(S[from] / stepS) * stepS + stepS * 0.5; sv < S[to]; sv += stepS) {
-        while (k < to - 1 && S[k + 1] < sv) k++;
+      let k = xf;
+      for (let sv = (Math.ceil(S[xf] / stepS - 0.5) + 0.5) * stepS; sv < S[xt]; sv += stepS) {
+        while (k < xt - 1 && S[k + 1] < sv) k++;
         const a = P[k], b = P[k + 1];
         const seg = S[k + 1] - S[k] || 1;
         const f = (sv - S[k]) / seg;
@@ -352,14 +339,14 @@ export class Renderer {
       ctx.stroke();
 
       // brilho cilíndrico (faixa clara deslocada para um lado)
-      ctx.strokeStyle = 'rgba(255,255,255,.3)';
+      ctx.strokeStyle = shade(color, 0.35); // sólido: sobreposição nas junções não aparece
       ctx.lineWidth = Math.max(1, w * 0.16);
       ctx.beginPath();
-      for (let q = from; q <= to; q++) {
+      for (let q = xf; q <= xt; q++) {
         const a = P[Math.max(0, q - 1)], b = P[Math.min(P.length - 1, q + 1)];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         const ox = (-(b.y - a.y) / l) * w * 0.22, oy = ((b.x - a.x) / l) * w * 0.22;
-        if (q === from) ctx.moveTo(P[q].x + ox, P[q].y + oy); else ctx.lineTo(P[q].x + ox, P[q].y + oy);
+        if (q === xf) ctx.moveTo(P[q].x + ox, P[q].y + oy); else ctx.lineTo(P[q].x + ox, P[q].y + oy);
       }
       ctx.stroke();
     }
