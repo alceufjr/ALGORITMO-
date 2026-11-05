@@ -21,6 +21,29 @@ function segCross(a, b, c, d) {
   return { x: a.x + t * rx, y: a.y + t * ry, t, u };
 }
 
+/** Pontos mais próximos entre dois segmentos que não se cruzam (t, u = posição em cada um). */
+function closestPoints(a, b, c, d) {
+  const proj = (p, s0, s1) => {
+    const dx = s1.x - s0.x, dy = s1.y - s0.y;
+    const l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - s0.x) * dx + (p.y - s0.y) * dy) / l2));
+    return { t, x: s0.x + dx * t, y: s0.y + dy * t };
+  };
+  const cands = [];
+  for (const [p, tp] of [[a, 0], [b, 1]]) {
+    const q = proj(p, c, d);
+    cands.push({ d: Math.hypot(q.x - p.x, q.y - p.y), p: { x: p.x, y: p.y }, q, t: tp, u: q.t });
+  }
+  for (const [p, up] of [[c, 0], [d, 1]]) {
+    const q = proj(p, a, b);
+    cands.push({ d: Math.hypot(q.x - p.x, q.y - p.y), p: { x: q.x, y: q.y }, q: { x: p.x, y: p.y }, t: q.t, u: up });
+  }
+  cands.sort((x, y) => x.d - y.d);
+  const m = cands[0];
+  // afasta um pouco das pontas para o enrosco não ficar sob a bolinha
+  return { p: m.p, q: m.q, t: Math.min(0.92, Math.max(0.08, m.t)), u: Math.min(0.92, Math.max(0.08, m.u)) };
+}
+
 function unit(x, y) { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; }
 
 
@@ -76,6 +99,7 @@ export class Renderer {
     const p = this.g.pegs[id];
     return { x: this.ox + p.x * this.cell, y: this.oy + p.y * this.cell };
   }
+  toGrid(x, y) { return { x: (x - this.ox) / this.cell, y: (y - this.oy) / this.cell }; }
   toScreen(gx, gy) { return { x: this.ox + gx * this.cell, y: this.oy + gy * this.cell }; }
 
   endPos(ropeId, end, now) {
@@ -192,8 +216,7 @@ export class Renderer {
 
     // marcadores de cruzamento (tutorial / acessibilidade)
     if (this.showMarkers && !this.drag && !this.winT) {
-      for (const p of g.state.points) {
-        const s = this.toScreen(p.x, p.y);
+      for (const s of this.lastList || []) {
         ctx.beginPath();
         ctx.arc(s.x, s.y, this.ropeW * 0.75, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(230,57,70,.92)';
@@ -214,49 +237,35 @@ export class Renderer {
   }
 
   /**
-   * Cruzamentos em coordenadas de tela, com quem passa POR CIMA em cada um.
-   * Ao longo de cada corda os cruzamentos alternam cima/baixo, como um nó real;
-   * em empate vale a corda movida por último. A arrastada passa sempre por cima.
+   * Enroscos a desenhar, vindos do modelo do jogo (g.K): para cada par com voltas,
+   * o ponto onde ficam (cruzamento em linha reta, ou o ponto mais próximo entre as
+   * cordas quando estão ENGANCHADAS sem se cruzar) e quem fica por cima.
    */
   weave(pos) {
-    const g = this.g;
-    const dragged = this.drag ? this.drag.ropeId : -1;
-    const z = {};
-    g.order.forEach((id, i) => { z[id] = i; });
-    const ids = g.order.slice().sort((a, b) => a - b);
     const list = [];
-    for (let x = 0; x < ids.length; x++) {
-      for (let y = x + 1; y < ids.length; y++) {
-        const i = ids[x], j = ids[y];
-        const p = segCross(pos[i][0], pos[i][1], pos[j][0], pos[j][1]);
-        if (p) list.push({ i, j, x: p.x, y: p.y, ti: p.t, tj: p.u });
+    for (const [key, k] of Object.entries(this.g.K)) {
+      if (!k) continue;
+      const [i, j] = key.split(',').map(Number);
+      const p = segCross(pos[i][0], pos[i][1], pos[j][0], pos[j][1]);
+      let c;
+      if (p) c = { i, j, x: p.x, y: p.y, ti: p.t, tj: p.u, crossing: true };
+      else {
+        const q = closestPoints(pos[i][0], pos[i][1], pos[j][0], pos[j][1]);
+        c = { i, j, x: (q.p.x + q.q.x) / 2, y: (q.p.y + q.q.y) / 2, ti: q.t, tj: q.u, crossing: false, pi: q.p };
       }
+      c.k = k;
+      c.over = k > 0 ? i : j;
+      list.push(c);
     }
-    const along = {};
-    for (const c of list) {
-      if (c.i === dragged || c.j === dragged) continue;
-      (along[c.i] ||= []).push([c.ti, c]);
-      (along[c.j] ||= []).push([c.tj, c]);
-    }
-    for (const [id, arr] of Object.entries(along)) {
-      arr.sort((a, b) => a[0] - b[0]);
-      arr.forEach(([, c], k) => { if (c.i === +id) c.ki = k; else c.kj = k; });
-    }
-    for (const c of list) {
-      if (c.i === dragged) { c.over = c.i; continue; }
-      if (c.j === dragged) { c.over = c.j; continue; }
-      const wantI = (c.ki + c.i) % 2 === 0;
-      const wantJ = (c.kj + c.j) % 2 === 0;
-      c.over = wantI !== wantJ ? (wantI ? c.i : c.j) : (z[c.i] > z[c.j] ? c.i : c.j);
-    }
+    this.lastList = list;
     return list;
   }
 
   /**
-   * Torção: perto do cruzamento os dois fios são puxados um para o outro e se
-   * enrolam ao longo da bissetriz (3 meias-voltas: entram cada um de um lado e
-   * saem trocados, como dois fios realmente cruzados). Sem espaço suficiente
-   * (cruzamentos muito próximos ou perto de uma ponta), fica o cruzamento simples.
+   * Torção: perto do enrosco os dois fios são puxados um para o outro e dão |K|
+   * meias-voltas ao longo da bissetriz (ímpar: saem trocados = cruzados;
+   * par: voltam ao próprio lado = enganchados). Sem espaço, uma volta simples
+   * vira um cruzamento comum; enganches são sempre desenhados.
    */
   computeTwists(pos, list) {
     const w = this.ropeW;
@@ -277,11 +286,11 @@ export class Renderer {
       });
     }
     for (const c of list) {
-      const half = Math.min(w * 2.7, room.get(c) - w * 0.15);
+      const turns = Math.min(Math.abs(c.k), 6);
+      let half = Math.min(w * 2.7, room.get(c) - w * 0.15);
       c.twist = null;
-      if (half < w * 0.6) continue;
-      // espaço folgado: 3 meias-voltas (enrosco); apertado: 1 (os fios só se dobram e se cruzam)
-      const turns = half >= w * 1.6 ? 3 : 1;
+      if (turns === 1 && half < w * 0.6) continue;           // cruzamento simples
+      if (turns > 1) half = Math.max(half, w * 0.55 * turns); // enganche: sempre visível
       const [a1, b1] = pos[c.i], [a2, b2] = pos[c.j];
       const d1 = unit(b1.x - a1.x, b1.y - a1.y);
       let d2 = unit(b2.x - a2.x, b2.y - a2.y);
@@ -289,11 +298,12 @@ export class Renderer {
       if (flipJ) d2 = { x: -d2.x, y: -d2.y };
       const u = unit(d1.x + d2.x, d1.y + d2.y);
       const n = { x: -u.y, y: u.x };
-      const sideI = -(d1.x * n.x + d1.y * n.y) >= 0 ? 1 : -1;
+      let sideI;
+      if (c.crossing) sideI = -(d1.x * n.x + d1.y * n.y) >= 0 ? 1 : -1;
+      else sideI = (c.pi.x - c.x) * n.x + (c.pi.y - c.y) * n.y >= 0 ? 1 : -1;
+      const amp = turns === 1 ? Math.min(w * 0.45, half * 0.45) : w * 0.5;
       c.twist = {
-        S: { x: c.x - u.x * half, y: c.y - u.y * half }, u, n, L: half * 2,
-        amp: turns === 3 ? w * Math.min(0.5, 0.2 + half / w * 0.12) : Math.min(w * 0.45, half * 0.45),
-        turns,
+        S: { x: c.x - u.x * half, y: c.y - u.y * half }, u, n, L: half * 2, amp, turns,
         side: { [c.i]: sideI, [c.j]: -sideI },
         flip: { [c.i]: false, [c.j]: flipJ },
       };
@@ -334,12 +344,13 @@ export class Renderer {
       if (c.twist) {
         // na torção os fios se cruzam 1 ou 3 vezes, alternando por cima / por baixo
         const T = c.twist;
-        const seq = T.turns === 3 ? [c.over, other, c.over] : [c.over];
-        seq.forEach((top, k) => {
-          const s = T.L * (2 * k + 1) / (2 * T.turns);
+        for (let k = 0; k < T.turns; k++) {
+          const top = k % 2 === 0 ? c.over : other;
           const bottom = top === c.over ? other : c.over;
-          spots.push({ top, bottom, x: T.S.x + T.u.x * s, y: T.S.y + T.u.y * s, r: this.ropeW * (T.turns === 3 ? 0.95 : 1.3) });
-        });
+          const s = T.L * (2 * k + 1) / (2 * T.turns);
+          const r = Math.min(this.ropeW * (T.turns === 1 ? 1.3 : 0.95), (T.L / T.turns) * 0.55 + this.ropeW * 0.3);
+          spots.push({ top, bottom, x: T.S.x + T.u.x * s, y: T.S.y + T.u.y * s, r });
+        }
       } else {
         spots.push({ top: c.over, bottom: other, x: c.x, y: c.y, r: this.ropeW * 1.6 });
       }

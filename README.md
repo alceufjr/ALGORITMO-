@@ -24,10 +24,13 @@ npm run test:e2e     # joga no navegador (precisa de npm start rodando e do Play
 
 ## Como o jogo funciona
 
-- **Regra:** vence quando o nº de cruzamentos chega a 0. Encostar a ponta no meio de
-  outra corda também conta como cruzamento.
+- **Regra (cordas que enrolam):** a corda que você arrasta passa **por cima** das outras,
+  e cada par de cordas guarda quantas voltas tem uma na outra. Voltar pelo mesmo caminho
+  desenrola; passar por outro caminho pode **enganchar** as cordas (2 voltas) mesmo sem
+  elas se cruzarem em linha reta. A ordem dos movimentos importa. Vence com 0 nós.
+  Modelo em `www/js/core.js` (`sweep`).
 - **Gerador com solução garantida** (`www/js/levels.js`): cria um tabuleiro resolvido e
-  o embaralha com jogadas reversíveis; a meta de jogadas (3 estrelas) é calculada de
+  o embaralha com arrastes que enrolam as cordas; desfazê-los na ordem inversa resolve; a meta de jogadas (3 estrelas) é calculada de
   forma exata nas fases pequenas e por limite superior nas grandes.
 - **Curva de dificuldade:**
 

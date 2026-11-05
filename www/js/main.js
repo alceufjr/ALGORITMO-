@@ -16,6 +16,7 @@ let current = 1;          // fase atual (modo campanha)
 let mode = 'campaign';    // 'campaign' | 'daily'
 let inputLocked = false;
 let markersOn = false;
+let lastKnots = 0;
 
 const theme = () => themeById(Store.data.theme);
 
@@ -243,7 +244,8 @@ canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   renderer.drag = { ...hit, x: p.x, y: p.y, target: -1, pid: e.pointerId };
   renderer.hint = null;
-  game.bringToTop(hit.ropeId);
+  game.beginDrag(hit.ropeId, hit.end);
+  lastKnots = game.conflicts;
   Sfx.pick();
 });
 
@@ -252,6 +254,14 @@ canvas.addEventListener('pointermove', (e) => {
   if (!d || d.pid !== e.pointerId) return;
   const p = pt(e);
   d.x = p.x; d.y = p.y;
+  // o caminho do dedo enrola/desenrola as cordas em tempo real
+  const gp = renderer.toGrid(p.x, p.y);
+  game.dragTo(gp.x, gp.y);
+  if (game.conflicts !== lastKnots) {
+    if (game.conflicts < lastKnots) Sfx.untangle(); else Sfx.tangle();
+    lastKnots = game.conflicts;
+    updateHud();
+  }
   const peg = renderer.pegAt(p.x, p.y);
   const own = game.ropes[d.ropeId].ends[d.end];
   d.target = peg >= 0 && peg !== own && game.isEmpty(peg) ? peg : -1;
@@ -261,15 +271,11 @@ function endDrag(e) {
   const d = renderer.drag;
   if (!d || d.pid !== e.pointerId) return;
   renderer.drag = null;
-  const before = game.conflicts;
   renderer.snap = { ropeId: d.ropeId, end: d.end, x: d.x, y: d.y, t0: performance.now() };
-  if (d.target >= 0 && game.move(d.ropeId, d.end, d.target)) {
-    if (game.conflicts < before) Sfx.untangle(); else Sfx.drop();
-    updateHud();
-    if (game.solved) onWin();
-  } else {
-    Sfx.cancel();
-  }
+  const moved = game.endDrag(d.target);
+  if (moved) Sfx.drop(); else Sfx.cancel();
+  updateHud();
+  if (game.solved) onWin();
 }
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);

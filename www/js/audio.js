@@ -36,6 +36,7 @@ export const Sfx = {
   pick() { if (this.enabled) tone(520, 0.08, 'triangle', 0.15, 0, 1.4); this.buzz(8); },
   drop() { if (this.enabled) tone(330, 0.1, 'triangle', 0.18, 0, 0.7); this.buzz(12); },
   cancel() { if (this.enabled) tone(200, 0.12, 'sine', 0.12, 0, 0.8); },
+  tangle() { if (this.enabled) tone(240, 0.07, 'sawtooth', 0.05, 0, 0.8); this.buzz(6); },
   untangle() { if (this.enabled) { tone(660, 0.08, 'sine', 0.12); tone(880, 0.1, 'sine', 0.1, 0.06); } },
   win() {
     if (!this.enabled) return;
