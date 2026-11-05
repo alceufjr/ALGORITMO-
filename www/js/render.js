@@ -1,3 +1,4 @@
+import { buildRopes, zRuns } from './ropes.js';
 // Renderização em Canvas 2D: furos, cordas trançadas, pinos, dicas e confete.
 
 function shade(hex, amt) {
@@ -21,7 +22,11 @@ function segCross(a, b, c, d) {
   return { x: a.x + t * rx, y: a.y + t * ry, t, u };
 }
 
-/** Pontos mais próximos entre dois segmentos que não se cruzam (t, u = posição em cada um). */
+/**
+ * Onde desenhar um ENGANCHE entre dois segmentos que não se cruzam: o trecho de
+ * maior aproximação. Para cordas quase paralelas, o meio do trecho em que estão
+ * igualmente próximas (e não uma das pontas).
+ */
 function closestPoints(a, b, c, d) {
   const proj = (p, s0, s1) => {
     const dx = s1.x - s0.x, dy = s1.y - s0.y;
@@ -29,23 +34,24 @@ function closestPoints(a, b, c, d) {
     const t = Math.max(0, Math.min(1, ((p.x - s0.x) * dx + (p.y - s0.y) * dy) / l2));
     return { t, x: s0.x + dx * t, y: s0.y + dy * t };
   };
-  const cands = [];
-  for (const [p, tp] of [[a, 0], [b, 1]]) {
+  const samples = [];
+  for (let k = 0; k <= 24; k++) {
+    const t = 0.12 + (0.76 * k) / 24;
+    const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
     const q = proj(p, c, d);
-    cands.push({ d: Math.hypot(q.x - p.x, q.y - p.y), p: { x: p.x, y: p.y }, q, t: tp, u: q.t });
+    if (q.t < 0.12 || q.t > 0.88) continue;
+    samples.push({ t, u: q.t, p, q, d: Math.hypot(q.x - p.x, q.y - p.y) });
   }
-  for (const [p, up] of [[c, 0], [d, 1]]) {
-    const q = proj(p, a, b);
-    cands.push({ d: Math.hypot(q.x - p.x, q.y - p.y), p: { x: q.x, y: q.y }, q: { x: p.x, y: p.y }, t: q.t, u: up });
+  if (!samples.length) {
+    const p = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const q = proj(p, c, d);
+    return { p, q, t: 0.5, u: Math.min(0.88, Math.max(0.12, q.t)) };
   }
-  cands.sort((x, y) => x.d - y.d);
-  const m = cands[0];
-  // afasta um pouco das pontas para o enrosco não ficar sob a bolinha
-  return { p: m.p, q: m.q, t: Math.min(0.92, Math.max(0.08, m.t)), u: Math.min(0.92, Math.max(0.08, m.u)) };
+  const min = Math.min(...samples.map((x) => x.d));
+  const near = samples.filter((x) => x.d <= min * 1.04 + 0.5);
+  const m = near[Math.floor(near.length / 2)];
+  return { p: m.p, q: m.q, t: m.t, u: m.u };
 }
-
-function unit(x, y) { const l = Math.hypot(x, y) || 1; return { x: x / l, y: y / l }; }
-
 
 export class Renderer {
   constructor(canvas) {
@@ -76,7 +82,6 @@ export class Renderer {
 
   setGame(g) {
     this.g = g;
-    this.layers = new Map();
     this.drag = this.snap = this.hint = null;
     this.particles = [];
     this.winT = 0;
@@ -190,22 +195,13 @@ export class Renderer {
 
     const pulse = this.winT ? 0.5 + 0.5 * Math.sin(now / 90) : 0;
 
-    // ---- cordas ----------------------------------------------------------
-    // 1) pontas na tela   2) cruzamentos + quem passa por cima
-    // 3) em cada cruzamento com espaço, os dois fios se TORCEM juntos (enrosco)
-    // 4) desenha cada corda como caminho; 5) refaz o "por cima" em cada ponto da torção
+    // ---- cordas: física 2.5D (ropes.js) + desenho por trechos ordenados em z ----
     const pos = {};
     for (const id of g.order) pos[id] = [this.endPos(id, 0, now), this.endPos(id, 1, now)];
-    const list = this.weave(pos);
-    this.computeTwists(pos, list);
-    const paths = {};
-    for (const id of g.order) paths[id] = this.ropePath(+id, pos, list);
     const dragged = this.drag ? this.drag.ropeId : -1;
-
-    for (const id of g.order) {
-      this.drawRope(paths[id], g.ropes[id].color, id === dragged, pulse);
-    }
-    this.drawCrossings(paths, list, pulse);
+    const tangles = this.weave(pos);
+    const paths = buildRopes(pos, tangles, { w: this.ropeW, endR: this.pegR, lifted: dragged });
+    this.drawRopes(paths, pulse);
 
     for (const id of g.order) {
       const r = g.ropes[id];
@@ -262,202 +258,111 @@ export class Renderer {
   }
 
   /**
-   * Torção: perto do enrosco os dois fios são puxados um para o outro e dão |K|
-   * meias-voltas ao longo da bissetriz (ímpar: saem trocados = cruzados;
-   * par: voltam ao próprio lado = enganchados). Sem espaço, uma volta simples
-   * vira um cruzamento comum; enganches são sempre desenhados.
+   * Desenha as cordas em 2.5D:
+   *  - sombra no chão de todas as cordas;
+   *  - trechos ordenados por altura (z). Cada trecho: sombra projetada (se elevado),
+   *    contorno preto, cor, listras diagonais e brilho. Assim o contorno do trecho de
+   *    cima recobre limpo o trecho de baixo nos cruzamentos.
+   * Espessura constante; extremidades dos trechos em "butt" (as pontas reais ficam
+   * sob as bolinhas) e junções arredondadas.
    */
-  computeTwists(pos, list) {
-    const w = this.ropeW;
-    const per = {};
-    for (const c of list) { (per[c.i] ||= []).push(c); (per[c.j] ||= []).push(c); }
-    const room = new Map();
-    for (const [key, arr] of Object.entries(per)) {
-      const r = +key;
-      const [a, b] = pos[r];
-      const len = Math.hypot(b.x - a.x, b.y - a.y);
-      const tOf = (c) => (c.i === r ? c.ti : c.tj);
-      arr.sort((x, y) => tOf(x) - tOf(y));
-      arr.forEach((c, k) => {
-        const d = tOf(c) * len;
-        const prev = k > 0 ? (d - tOf(arr[k - 1]) * len) / 2 : d - this.pegR * 1.2;
-        const next = k < arr.length - 1 ? (tOf(arr[k + 1]) * len - d) / 2 : len - d - this.pegR * 1.2;
-        room.set(c, Math.min(room.has(c) ? room.get(c) : Infinity, prev, next));
-      });
-    }
-    for (const c of list) {
-      const turns = Math.min(Math.abs(c.k), 6);
-      let half = Math.min(w * 2.7, room.get(c) - w * 0.15);
-      c.twist = null;
-      if (turns === 1 && half < w * 0.6) continue;           // cruzamento simples
-      if (turns > 1) half = Math.max(half, w * 0.55 * turns); // enganche: sempre visível
-      const [a1, b1] = pos[c.i], [a2, b2] = pos[c.j];
-      const d1 = unit(b1.x - a1.x, b1.y - a1.y);
-      let d2 = unit(b2.x - a2.x, b2.y - a2.y);
-      const flipJ = d1.x * d2.x + d1.y * d2.y < 0;
-      if (flipJ) d2 = { x: -d2.x, y: -d2.y };
-      const u = unit(d1.x + d2.x, d1.y + d2.y);
-      const n = { x: -u.y, y: u.x };
-      let sideI;
-      if (c.crossing) sideI = -(d1.x * n.x + d1.y * n.y) >= 0 ? 1 : -1;
-      else sideI = (c.pi.x - c.x) * n.x + (c.pi.y - c.y) * n.y >= 0 ? 1 : -1;
-      const amp = turns === 1 ? Math.min(w * 0.45, half * 0.45) : w * 0.5;
-      c.twist = {
-        S: { x: c.x - u.x * half, y: c.y - u.y * half }, u, n, L: half * 2, amp, turns,
-        side: { [c.i]: sideI, [c.j]: -sideI },
-        flip: { [c.i]: false, [c.j]: flipJ },
-      };
-    }
-  }
-
-  twistPoint(T, s, side) {
-    const off = side * T.amp * Math.cos((T.turns * Math.PI * s) / T.L);
-    return { x: T.S.x + T.u.x * s + T.n.x * off, y: T.S.y + T.u.y * s + T.n.y * off };
-  }
-
-  /** Caminho da corda: reta entre as pontas, desviando para cada torção. */
-  ropePath(r, pos, list) {
-    const [a, b] = pos[r];
-    const mine = list.filter((c) => c.twist && (c.i === r || c.j === r))
-      .sort((x, y) => (x.i === r ? x.ti : x.tj) - (y.i === r ? y.ti : y.tj));
-    const pts = [a];
-    const N = 18;
-    for (const c of mine) {
-      const T = c.twist;
-      for (let k = 0; k <= N; k++) {
-        const s = (T.flip[r] ? N - k : k) / N * T.L;
-        pts.push(this.twistPoint(T, s, T.side[r]));
-      }
-    }
-    pts.push(b);
-    return pts;
-  }
-
-  /** Refaz o fio de cima em cada ponto de cruzamento, com sombra no de baixo. */
-  drawCrossings(paths, list, pulse) {
+  drawRopes(paths, pulse) {
     const ctx = this.ctx;
     const g = this.g;
+    const w = this.ropeW;
+    const outline = this.board.outline;
     const dragged = this.drag ? this.drag.ropeId : -1;
-    const spots = [];
-    for (const c of list) {
-      const other = c.over === c.i ? c.j : c.i;
-      if (c.twist) {
-        // na torção os fios se cruzam 1 ou 3 vezes, alternando por cima / por baixo
-        const T = c.twist;
-        for (let k = 0; k < T.turns; k++) {
-          const top = k % 2 === 0 ? c.over : other;
-          const bottom = top === c.over ? other : c.over;
-          const s = T.L * (2 * k + 1) / (2 * T.turns);
-          const r = Math.min(this.ropeW * (T.turns === 1 ? 1.3 : 0.95), (T.L / T.turns) * 0.55 + this.ropeW * 0.3);
-          spots.push({ top, bottom, x: T.S.x + T.u.x * s, y: T.S.y + T.u.y * s, r });
-        }
-      } else {
-        spots.push({ top: c.over, bottom: other, x: c.x, y: c.y, r: this.ropeW * 1.6 });
-      }
-    }
-    // a arrastada por último, para nunca ficar coberta
-    spots.sort((p, q) => (p.top === dragged) - (q.top === dragged));
-    for (const p of spots) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(this.ropeLayer(p.bottom, paths[p.bottom], g.ropes[p.bottom].color, p.bottom === dragged, pulse), 0, 0, this.w, this.h);
-      // sombra só sobre o fio de baixo: anéis concêntricos da versão escura dele
-      const dark = this.ropeLayer(p.bottom, paths[p.bottom], g.ropes[p.bottom].color, p.bottom === dragged, pulse, true);
-      for (const k of [1, 0.72, 0.45]) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(p.x + 1, p.y + 2, p.r * k, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.globalAlpha = 0.3;
-        ctx.drawImage(dark, 0, 0, this.w, this.h);
-        ctx.restore();
-      }
-      ctx.drawImage(this.ropeLayer(p.top, paths[p.top], g.ropes[p.top].color, p.top === dragged, pulse), 0, 0, this.w, this.h);
-      ctx.restore();
-    }
-  }
 
-  /** Camada fora da tela com a corda desenhada (em cache até ela mudar). */
-  ropeLayer(id, pts, color, lifted, pulse, dark = false) {
-    this.layers ||= new Map();
-    const key = pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(';') +
-      [color, lifted, pulse, this.c.width, this.c.height, this.ropeW].join();
-    const slot = dark ? `${id}d` : id;
-    let L = this.layers.get(slot);
-    if (L && L.key === key) return L.canvas;
-    if (!L) { L = { canvas: document.createElement('canvas') }; this.layers.set(slot, L); }
-    const cv = L.canvas;
-    if (cv.width !== this.c.width || cv.height !== this.c.height) { cv.width = this.c.width; cv.height = this.c.height; }
-    const lc = cv.getContext('2d');
-    lc.setTransform(1, 0, 0, 1, 0, 0);
-    lc.clearRect(0, 0, cv.width, cv.height);
-    lc.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    const main = this.ctx;
-    this.ctx = lc;
-    try { this.drawRope(pts, dark ? '#000000' : color, lifted, pulse); } finally { this.ctx = main; }
-    L.key = key;
-    return cv;
-  }
-
-  /** Desenha uma corda trançada ao longo de um caminho (lista de pontos). */
-  drawRope(pts, color, lifted, pulse) {
-    const ctx = this.ctx;
-    const w = this.ropeW * (lifted ? 1.12 : 1);
-    const line = (dx = 0, dy = 0) => {
+    // comprimento acumulado (textura contínua ao longo de toda a corda)
+    const arc = {};
+    for (const [id, P] of Object.entries(paths)) {
+      const s = [0];
+      for (let k = 1; k < P.length; k++) s.push(s[k - 1] + Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y));
+      arc[id] = s;
+    }
+    const trace = (P, from, to, dx = 0, dy = 0) => {
       ctx.beginPath();
-      ctx.moveTo(pts[0].x + dx, pts[0].y + dy);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x + dx, pts[i].y + dy);
+      ctx.moveTo(P[from].x + dx, P[from].y + dy);
+      for (let k = from + 1; k <= to; k++) ctx.lineTo(P[k].x + dx, P[k].y + dy);
     };
+
     ctx.save();
-    ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    // sombra
-    const so = lifted ? 7 : 3;
-    ctx.strokeStyle = lifted ? 'rgba(0,0,0,.22)' : 'rgba(60,30,20,.16)';
-    ctx.lineWidth = w + 2;
-    line(so * 0.4, so); ctx.stroke();
-    // contorno + corpo
-    ctx.strokeStyle = this.board.outline;
-    ctx.lineWidth = w + 5;
-    line(); ctx.stroke();
-    ctx.strokeStyle = pulse ? shade(color, 0.25 * pulse) : color;
-    ctx.lineWidth = w;
-    line(); ctx.stroke();
-    // trança: listras diagonais ao longo do comprimento (segue as curvas)
+
+    // sombra no chão
+    ctx.lineCap = 'round';
+    for (const id of g.order) {
+      const P = paths[id];
+      const up = id === dragged;
+      ctx.strokeStyle = up ? 'rgba(0,0,0,.2)' : 'rgba(60,30,20,.15)';
+      ctx.lineWidth = w + 3;
+      trace(P, 0, P.length - 1, up ? 4 : 1.5, up ? 9 : 3.5);
+      ctx.stroke();
+    }
+
     ctx.lineCap = 'butt';
-    ctx.strokeStyle = shade(color, -0.22);
-    ctx.lineWidth = Math.max(1.5, w * 0.2);
-    const step = w * 0.85, half = w * 0.42;
-    let carry = step * 0.5;
-    ctx.beginPath();
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      const len = Math.hypot(b.x - a.x, b.y - a.y);
-      if (len < 0.01) continue;
-      const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len, nx = -uy, ny = ux;
-      let t = carry;
-      for (; t < len; t += step) {
-        const px = a.x + ux * t, py = a.y + uy * t;
+    for (const run of zRuns(paths, g.order, w + 5.5)) {
+      const P = paths[run.id];
+      const color = g.ropes[run.id].color;
+      const body = pulse ? shade(color, 0.25 * pulse) : color;
+      const { from, to } = run;
+      if (to <= from) continue;
+      const S = arc[run.id];
+
+      // sombra projetada sobre o que está embaixo — aparada nas emendas com a própria
+      // corda (ali ela não toca ninguém) e com pontas redondas, para não deixar corte
+      if (run.level >= 2) {
+        const trim = Math.ceil((w * 1.3) / Math.max(1, (S[to] - S[from]) / Math.max(1, to - from)));
+        const f2 = from === 0 ? 0 : Math.min(to, from + trim);
+        const t2 = to === P.length - 1 ? to : Math.max(f2, to - trim);
+        if (t2 > f2) {
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = 'rgba(0,0,0,.24)';
+          ctx.lineWidth = w + 2;
+          trace(P, f2, t2, 1.5, run.level === 3 ? 8 : 4);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      // contorno preto (primeiro), depois a cor
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = w + 5;
+      trace(P, from, to); ctx.stroke();
+      ctx.strokeStyle = body;
+      ctx.lineWidth = w;
+      trace(P, from, to); ctx.stroke();
+
+      // listras diagonais da trança, posicionadas pelo comprimento de arco
+      const stepS = w * 0.85, half = w * 0.42;
+      ctx.strokeStyle = shade(color, -0.24);
+      ctx.lineWidth = Math.max(1.5, w * 0.2);
+      ctx.beginPath();
+      let k = from;
+      for (let sv = Math.ceil(S[from] / stepS) * stepS + stepS * 0.5; sv < S[to]; sv += stepS) {
+        while (k < to - 1 && S[k + 1] < sv) k++;
+        const a = P[k], b = P[k + 1];
+        const seg = S[k + 1] - S[k] || 1;
+        const f = (sv - S[k]) / seg;
+        const px = a.x + (b.x - a.x) * f, py = a.y + (b.y - a.y) * f;
+        const ux = (b.x - a.x) / seg, uy = (b.y - a.y) / seg, nx = -uy, ny = ux;
         ctx.moveTo(px + nx * half - ux * w * 0.3, py + ny * half - uy * w * 0.3);
         ctx.lineTo(px - nx * half + ux * w * 0.3, py - ny * half + uy * w * 0.3);
       }
-      carry = t - len;
+      ctx.stroke();
+
+      // brilho cilíndrico (faixa clara deslocada para um lado)
+      ctx.strokeStyle = 'rgba(255,255,255,.3)';
+      ctx.lineWidth = Math.max(1, w * 0.16);
+      ctx.beginPath();
+      for (let q = from; q <= to; q++) {
+        const a = P[Math.max(0, q - 1)], b = P[Math.min(P.length - 1, q + 1)];
+        const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const ox = (-(b.y - a.y) / l) * w * 0.22, oy = ((b.x - a.x) / l) * w * 0.22;
+        if (q === from) ctx.moveTo(P[q].x + ox, P[q].y + oy); else ctx.lineTo(P[q].x + ox, P[q].y + oy);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
-    // brilho (deslocado para um lado de cada trecho)
-    ctx.strokeStyle = 'rgba(255,255,255,.28)';
-    ctx.lineWidth = Math.max(1, w * 0.16);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
-      const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-      const ox = (-(b.y - a.y) / l) * w * 0.22, oy = ((b.x - a.x) / l) * w * 0.22;
-      if (i === 0) ctx.moveTo(pts[i].x + ox, pts[i].y + oy); else ctx.lineTo(pts[i].x + ox, pts[i].y + oy);
-    }
-    ctx.stroke();
     ctx.restore();
   }
 
