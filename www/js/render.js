@@ -1,4 +1,4 @@
-import { buildRopes, zRuns } from './ropes.js';
+import { ropeGeometry } from './ropes.js';
 // Renderização em Canvas 2D: furos, cordas trançadas, pinos, dicas e confete.
 
 function shade(hex, amt) {
@@ -11,46 +11,18 @@ function shade(hex, amt) {
 
 const ease = (t) => 1 - Math.pow(1 - t, 3);
 
-/** Interseção própria de dois segmentos (t, u = posição ao longo de cada um, 0..1). */
-function segCross(a, b, c, d) {
-  const rx = b.x - a.x, ry = b.y - a.y, sx = d.x - c.x, sy = d.y - c.y;
-  const den = rx * sy - ry * sx;
-  if (Math.abs(den) < 1e-9) return null;
-  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
-  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
-  if (t <= 0.001 || t >= 0.999 || u <= 0.001 || u >= 0.999) return null;
-  return { x: a.x + t * rx, y: a.y + t * ry, t, u };
-}
-
-/**
- * Onde desenhar um ENGANCHE entre dois segmentos que não se cruzam: o trecho de
- * maior aproximação. Para cordas quase paralelas, o meio do trecho em que estão
- * igualmente próximas (e não uma das pontas).
- */
-function closestPoints(a, b, c, d) {
-  const proj = (p, s0, s1) => {
-    const dx = s1.x - s0.x, dy = s1.y - s0.y;
-    const l2 = dx * dx + dy * dy || 1;
-    const t = Math.max(0, Math.min(1, ((p.x - s0.x) * dx + (p.y - s0.y) * dy) / l2));
-    return { t, x: s0.x + dx * t, y: s0.y + dy * t };
-  };
-  const samples = [];
-  for (let k = 0; k <= 24; k++) {
-    const t = 0.12 + (0.76 * k) / 24;
-    const p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-    const q = proj(p, c, d);
-    if (q.t < 0.12 || q.t > 0.88) continue;
-    samples.push({ t, u: q.t, p, q, d: Math.hypot(q.x - p.x, q.y - p.y) });
-  }
-  if (!samples.length) {
-    const p = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const q = proj(p, c, d);
-    return { p, q, t: 0.5, u: Math.min(0.88, Math.max(0.12, q.t)) };
-  }
-  const min = Math.min(...samples.map((x) => x.d));
-  const near = samples.filter((x) => x.d <= min * 1.04 + 0.5);
-  const m = near[Math.floor(near.length / 2)];
-  return { p: m.p, q: m.q, t: m.t, u: m.u };
+/** Faixa retangular que cobre uma corda reta de largura w (usada como recorte). */
+function bandPath(ctx, a, b, w) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * w / 2, ny = (dx / len) * w / 2;
+  const ex = (dx / len) * w / 2, ey = (dy / len) * w / 2; // cobre as pontas arredondadas
+  ctx.beginPath();
+  ctx.moveTo(a.x - ex + nx, a.y - ey + ny);
+  ctx.lineTo(b.x + ex + nx, b.y + ey + ny);
+  ctx.lineTo(b.x + ex - nx, b.y + ey - ny);
+  ctx.lineTo(a.x - ex - nx, a.y - ey - ny);
+  ctx.closePath();
 }
 
 export class Renderer {
@@ -212,17 +184,25 @@ export class Renderer {
     const pos = {};
     for (const id of g.order) pos[id] = [this.endPos(id, 0, now), this.endPos(id, 1, now)];
     const dragged = this.drag ? this.drag.ropeId : -1;
-    const tangles = this.weave(pos);
+    // quem passa por cima em cada cruzamento: arrastada > modelo do jogo > mais recente
+    const zIdx = {};
+    g.order.forEach((id, k) => { zIdx[id] = k; });
+    const over = (i, j) => {
+      if (i === dragged) return i;
+      if (j === dragged) return j;
+      const k = g.K[`${i},${j}`];
+      if (k) return k > 0 ? i : j;
+      return zIdx[i] > zIdx[j] ? i : j;
+    };
+    const geo = ropeGeometry(pos, over);
+    this.lastList = geo.crossings;
     // brilho onde um nó acabou de se desfazer (compara com o último estado parado)
     if (!this.drag && !this.snap) {
-      const now2 = new Map(tangles.map((c) => [`${c.i},${c.j}`, { x: c.x, y: c.y }]));
-      if (this.stableKnots) {
-        for (const [k, p] of this.stableKnots) if (!now2.has(k)) this.sparkle(p.x, p.y);
-      }
+      const now2 = new Map(geo.crossings.map((c) => [`${Math.min(c.over, c.under)},${Math.max(c.over, c.under)}`, c]));
+      if (this.stableKnots) for (const [k, c] of this.stableKnots) if (!now2.has(k)) this.sparkle(c.x, c.y);
       this.stableKnots = now2;
     }
-    const paths = buildRopes(pos, tangles, { w: this.ropeW, endR: this.pegR, lifted: dragged });
-    this.drawRopes(paths, pulse);
+    this.drawRopes(geo, pulse);
 
     for (const id of g.order) {
       const r = g.ropes[id];
@@ -264,124 +244,90 @@ export class Renderer {
   }
 
   /**
-   * Enroscos a desenhar, vindos do modelo do jogo (g.K): para cada par com voltas,
-   * o ponto onde ficam (cruzamento em linha reta, ou o ponto mais próximo entre as
-   * cordas quando estão ENGANCHADAS sem se cruzar) e quem fica por cima.
+   * Desenho das cordas (a geometria vem pronta de ropes.js e NÃO é alterada aqui):
+   *  1. sombra de todas as cordas no chão;
+   *  2. cada corda reta, inteira, na ordem de profundidade (arrastada por último);
+   *  3. em cada cruzamento, redesenha a corda de CIMA só dentro da faixa da corda de
+   *     baixo, com uma sombra sobre ela. O contorno preto da de cima "interrompe" a de
+   *     baixo — é isso que mostra quem passa por cima, sem entortar nenhum caminho.
    */
-  weave(pos) {
-    const list = [];
-    for (const [key, k] of Object.entries(this.g.K)) {
-      if (!k) continue;
-      const [i, j] = key.split(',').map(Number);
-      const p = segCross(pos[i][0], pos[i][1], pos[j][0], pos[j][1]);
-      let c;
-      if (p) c = { i, j, x: p.x, y: p.y, ti: p.t, tj: p.u, crossing: true };
-      else {
-        const q = closestPoints(pos[i][0], pos[i][1], pos[j][0], pos[j][1]);
-        c = { i, j, x: (q.p.x + q.q.x) / 2, y: (q.p.y + q.q.y) / 2, ti: q.t, tj: q.u, crossing: false, pi: q.p };
-      }
-      c.k = k;
-      c.over = k > 0 ? i : j;
-      list.push(c);
-    }
-    this.lastList = list;
-    return list;
-  }
-
-  /**
-   * Desenha as cordas em 2.5D:
-   *  - sombra no chão de todas as cordas;
-   *  - trechos ordenados por altura (z). Cada trecho: sombra projetada (se elevado),
-   *    contorno preto, cor, listras diagonais e brilho. Assim o contorno do trecho de
-   *    cima recobre limpo o trecho de baixo nos cruzamentos.
-   * Espessura constante; extremidades dos trechos em "butt" (as pontas reais ficam
-   * sob as bolinhas) e junções arredondadas.
-   */
-  drawRopes(paths, pulse) {
+  drawRopes(geo, pulse) {
     const ctx = this.ctx;
     const g = this.g;
-    const w = this.ropeW;
-    const outline = this.board.outline;
     const dragged = this.drag ? this.drag.ropeId : -1;
-
-    // comprimento acumulado (textura contínua ao longo de toda a corda)
-    const arc = {};
-    for (const [id, P] of Object.entries(paths)) {
-      const s = [0];
-      for (let k = 1; k < P.length; k++) s.push(s[k - 1] + Math.hypot(P[k].x - P[k - 1].x, P[k].y - P[k - 1].y));
-      arc[id] = s;
-    }
-    const trace = (P, from, to, dx = 0, dy = 0) => {
-      ctx.beginPath();
-      ctx.moveTo(P[from].x + dx, P[from].y + dy);
-      for (let k = from + 1; k <= to; k++) ctx.lineTo(P[k].x + dx, P[k].y + dy);
-    };
+    const { segments, crossings } = geo;
+    const width = (id) => this.ropeW * (id === dragged ? 1.12 : 1);
 
     ctx.save();
-    ctx.lineJoin = 'round';
-
-    // sombra no chão
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // 1) sombra no chão
     for (const id of g.order) {
-      const P = paths[id];
+      const S = segments[id];
       const up = id === dragged;
       ctx.strokeStyle = up ? 'rgba(0,0,0,.2)' : 'rgba(60,30,20,.15)';
-      ctx.lineWidth = w + 3;
-      trace(P, 0, P.length - 1, up ? 4 : 1.5, up ? 9 : 3.5);
+      ctx.lineWidth = width(id) + 3;
+      ctx.beginPath();
+      ctx.moveTo(S.a.x + (up ? 4 : 1.5), S.a.y + (up ? 9 : 3.5));
+      ctx.lineTo(S.b.x + (up ? 4 : 1.5), S.b.y + (up ? 9 : 3.5));
       ctx.stroke();
     }
+    // 2) cordas inteiras, retas
+    for (const id of g.order) this.drawStraightRope(segments[id], g.ropes[id].color, width(id), pulse);
 
-    ctx.lineCap = 'butt';
-    for (const run of zRuns(paths, g.order)) {
-      const P = paths[run.id];
-      const color = g.ropes[run.id].color;
-      const body = pulse ? shade(color, 0.25 * pulse) : color;
-      const { from, to } = run;
-      if (to <= from) continue;
-      const S = arc[run.id];
-
-      // contorno preto (primeiro), depois a cor. A cor avança 2 pontos sobre os
-      // trechos vizinhos da MESMA corda: cobre a cunha que o contorno de um trecho
-      // em "butt" deixa no vizinho quando a corda faz curva (sem emendas em escada)
-      ctx.strokeStyle = outline;
-      ctx.lineWidth = w + 5;
-      trace(P, Math.max(0, from - 1), Math.min(P.length - 1, to + 1)); ctx.stroke(); // fecha fendas
-      ctx.strokeStyle = body;
-      ctx.lineWidth = w;
-      const xf = Math.max(0, from - 2), xt = Math.min(P.length - 1, to + 2);
-      trace(P, xf, xt); ctx.stroke();
-
-      // listras diagonais da trança, posicionadas pelo comprimento de arco
-      const stepS = w * 0.85, half = w * 0.42;
-      ctx.strokeStyle = shade(color, -0.24);
-      ctx.lineWidth = Math.max(1.5, w * 0.2);
+    // 3) por cima / por baixo nos cruzamentos (a arrastada sempre por último)
+    const list = crossings.slice().sort((p, q) => (p.over === dragged) - (q.over === dragged));
+    for (const c of list) {
+      const U = segments[c.under], O = segments[c.over];
+      const wu = width(c.under) + 7;
+      ctx.save();
+      bandPath(ctx, U.a, U.b, wu);
+      ctx.clip();
+      // sombra da corda de cima projetada sobre a de baixo
+      ctx.strokeStyle = 'rgba(0,0,0,.3)';
+      ctx.lineWidth = width(c.over) + 6;
       ctx.beginPath();
-      let k = xf;
-      for (let sv = (Math.ceil(S[xf] / stepS - 0.5) + 0.5) * stepS; sv < S[xt]; sv += stepS) {
-        while (k < xt - 1 && S[k + 1] < sv) k++;
-        const a = P[k], b = P[k + 1];
-        const seg = S[k + 1] - S[k] || 1;
-        const f = (sv - S[k]) / seg;
-        const px = a.x + (b.x - a.x) * f, py = a.y + (b.y - a.y) * f;
-        const ux = (b.x - a.x) / seg, uy = (b.y - a.y) / seg, nx = -uy, ny = ux;
-        ctx.moveTo(px + nx * half - ux * w * 0.3, py + ny * half - uy * w * 0.3);
-        ctx.lineTo(px - nx * half + ux * w * 0.3, py - ny * half + uy * w * 0.3);
-      }
+      ctx.moveTo(O.a.x + 1.5, O.a.y + 4);
+      ctx.lineTo(O.b.x + 1.5, O.b.y + 4);
       ctx.stroke();
-
-      // brilho cilíndrico (faixa clara deslocada para um lado)
-      ctx.strokeStyle = shade(color, 0.35); // sólido: sobreposição nas junções não aparece
-      ctx.lineWidth = Math.max(1, w * 0.16);
-      ctx.beginPath();
-      for (let q = xf; q <= xt; q++) {
-        const a = P[Math.max(0, q - 1)], b = P[Math.min(P.length - 1, q + 1)];
-        const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        const ox = (-(b.y - a.y) / l) * w * 0.22, oy = ((b.x - a.x) / l) * w * 0.22;
-        if (q === xf) ctx.moveTo(P[q].x + ox, P[q].y + oy); else ctx.lineTo(P[q].x + ox, P[q].y + oy);
-      }
-      ctx.stroke();
+      // a corda de cima, idêntica à do passo 2, agora sobre a de baixo
+      this.drawStraightRope(O, g.ropes[c.over].color, width(c.over), pulse);
+      ctx.restore();
     }
     ctx.restore();
+  }
+
+  /** Uma corda reta: contorno preto, cor, listras da trança e brilho. Espessura constante. */
+  drawStraightRope(S, color, w, pulse) {
+    const ctx = this.ctx;
+    const { a, b, len } = S;
+    if (len < 0.5) return;
+    const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len, nx = -uy, ny = ux;
+    const line = (ox = 0, oy = 0) => { ctx.beginPath(); ctx.moveTo(a.x + ox, a.y + oy); ctx.lineTo(b.x + ox, b.y + oy); };
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = this.board.outline;
+    ctx.lineWidth = w + 5;
+    line(); ctx.stroke();
+    ctx.strokeStyle = pulse ? shade(color, 0.25 * pulse) : color;
+    ctx.lineWidth = w;
+    line(); ctx.stroke();
+    // listras diagonais, sempre nas mesmas posições a partir da ponta "a"
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = shade(color, -0.24);
+    ctx.lineWidth = Math.max(1.5, w * 0.2);
+    const step = w * 0.85, half = w * 0.42;
+    ctx.beginPath();
+    for (let t = step * 0.5; t < len; t += step) {
+      const px = a.x + ux * t, py = a.y + uy * t;
+      ctx.moveTo(px + nx * half - ux * w * 0.3, py + ny * half - uy * w * 0.3);
+      ctx.lineTo(px - nx * half + ux * w * 0.3, py - ny * half + uy * w * 0.3);
+    }
+    ctx.stroke();
+    // brilho cilíndrico
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,.3)';
+    ctx.lineWidth = Math.max(1, w * 0.16);
+    line(nx * w * 0.22, ny * w * 0.22); ctx.stroke();
   }
 
   drawBall(p, color, lifted) {
