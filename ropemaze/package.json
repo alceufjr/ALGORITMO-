@@ -1,0 +1,6 @@
+{
+  "name": "ropemaze",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node ropemaze.test.js" }
+}
