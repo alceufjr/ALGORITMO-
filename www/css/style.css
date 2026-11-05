@@ -133,3 +133,10 @@ body.dark .lvl.locked { background: #3a3560; border-color: #554f84; box-shadow: 
 @media (prefers-reduced-motion: reduce) {
   #boardWrap.board-in, .tutorial, .perfect, .card, .stars span.on { animation: none !important; }
 }
+
+/* ---------- cronômetro ---------- */
+.timer { margin-left: 12px; padding: 2px 10px; border: 2px solid var(--ink); border-radius: 999px; background: var(--card); color: var(--ink); font-variant-numeric: tabular-nums; }
+.timer.warn { background: #e63946; color: #fff; animation: tick 1s steps(2) infinite; }
+@keyframes tick { 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .timer.warn { animation: none; } }
+.modal .row .btn { white-space: nowrap; padding-left: 14px; padding-right: 14px; font-size: 17px; }

@@ -78,7 +78,7 @@
         </div>
         <span class="pill">⟲ <span id="hudMoves">0</span>/<span id="hudPar">0</span></span>
       </header>
-      <div class="knots"><span id="hudKnots">0</span> <span id="hudKnotsLabel"></span></div>
+      <div class="knots"><span id="hudKnots">0</span> <span id="hudKnotsLabel"></span><span id="hudTime" class="timer hidden"></span></div>
       <p id="tutorial" class="tutorial hidden"></p>
       <div id="boardWrap" class="board-in"><canvas id="board"></canvas></div>
       <footer class="bar bottom">
@@ -100,6 +100,17 @@
         <div class="row">
           <button id="btnReplay" class="btn" data-i18n="replay"></button>
           <button id="btnNext" class="btn primary"></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="timeModal" class="modal hidden">
+      <div class="card">
+        <h2 data-i18n="time_up_title"></h2>
+        <p id="timeModalBody"></p>
+        <div class="row">
+          <button id="btnTimeRetry" class="btn" data-i18n="try_again"></button>
+          <button id="btnTimeMore" class="btn primary"></button>
         </div>
       </div>
     </div>

@@ -17,6 +17,10 @@ let mode = 'campaign';    // 'campaign' | 'daily'
 let inputLocked = false;
 let markersOn = false;
 let undosLeft = 3;
+// cronômetro: tempo restante (s) e se está correndo; null = fase sem limite
+let timeLeft = null;
+let timeUsed = 0;
+let lastTick = 0;
 let rewardAction = null; // o que o vídeo premiado concede no modal aberto
 let lastKnots = 0;
 
@@ -147,6 +151,13 @@ function begin(level) {
   renderer.setGame(game);
   renderer.showMarkers = (mode === 'campaign' && current <= 2) || markersOn;
   undosLeft = CONFIG.undo.freePerLevel;
+  // tempo limite da fase (o tutorial não tem)
+  const T = CONFIG.timer;
+  const limited = T.enabled && (mode === 'daily' || current >= T.fromLevel);
+  timeLeft = limited ? T.base + T.perMove * level.par : null;
+  timeUsed = 0;
+  lastTick = performance.now();
+  $('#timeModal').classList.add('hidden');
   // dica do tutorial (fases 1–5)
   const tip = mode === 'campaign' ? level.tip : null;
   const tipEl = $('#tutorial');
@@ -184,7 +195,48 @@ function updateHud() {
   $('#btnUndo').disabled = game.history.length === 0;
   $('#undoCount').textContent = undosLeft > 0 ? undosLeft : '+';
   $('#btnMarkers').classList.toggle('off', !renderer.showMarkers);
+  updateTimer();
   renderer.dirty = true;
+}
+
+const fmtTime = (sec) => {
+  const v = Math.max(0, Math.ceil(sec));
+  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
+};
+
+function updateTimer() {
+  const el = $('#hudTime');
+  el.classList.toggle('hidden', timeLeft === null);
+  if (timeLeft === null) return;
+  el.textContent = `⏱ ${fmtTime(timeLeft)}`;
+  el.classList.toggle('warn', timeLeft <= CONFIG.timer.warnAt);
+}
+
+/** O relógio só corre com o tabuleiro visível e sem janela/anúncio aberto. */
+function timerRunning() {
+  return game && timeLeft !== null && !inputLocked && !document.hidden &&
+    $('#play').classList.contains('active') &&
+    !document.querySelector('.modal:not(.hidden)') && !document.querySelector('.mock-ad');
+}
+
+function tickTimer(now) {
+  const dt = Math.min(0.25, (now - lastTick) / 1000);
+  lastTick = now;
+  if (!timerRunning()) return;
+  timeLeft -= dt;
+  timeUsed += dt;
+  if (timeLeft <= 0) { timeLeft = 0; onTimeUp(); }
+  updateTimer();
+}
+
+function onTimeUp() {
+  inputLocked = true;
+  if (renderer.drag) { renderer.drag = null; game.endDrag(-1); }
+  Sfx.cancel();
+  Sfx.buzz([60, 40, 60]);
+  $('#timeModalBody').innerHTML = t('time_up_body', { n: CONFIG.timer.extraRewarded });
+  $('#btnTimeMore').textContent = t('more_time', { n: CONFIG.timer.extraRewarded });
+  $('#timeModal').classList.remove('hidden');
 }
 
 function onWin() {
@@ -210,6 +262,7 @@ function onWin() {
     $('#winPerfect').textContent = t('perfect');
     $('#winPerfect').classList.toggle('hidden', !(stars === 3 && game.moves <= game.level.par));
     let text = t('moves_line', { m: game.moves, p: game.level.par });
+    if (timeLeft !== null) text += ` · ${t('time_line', { t: fmtTime(timeUsed) })}`;
     if (mode === 'daily') text += ` · ${t('streak', { n: Store.currentStreak(todayKey()) })}\n${t('daily_win')}`;
     $('#winText').innerText = text;
     $('#winBonus').textContent = bonus;
@@ -344,6 +397,25 @@ $('#btnReplay').onclick = () => {
   $('#winModal').classList.add('hidden');
   if (mode === 'daily') startDaily(); else startLevel(current);
 };
+$('#btnTimeRetry').onclick = () => {
+  Sfx.click();
+  $('#timeModal').classList.add('hidden');
+  if (mode === 'daily') startDaily(); else startLevel(current);
+};
+$('#btnTimeMore').onclick = async () => {
+  $('#timeModal').classList.add('hidden');
+  const ok = await Ads.rewarded();
+  if (ok) {
+    timeLeft = CONFIG.timer.extraRewarded;
+    inputLocked = false;
+    lastTick = performance.now();
+    toast(t('time_plus', { n: CONFIG.timer.extraRewarded }));
+    updateTimer();
+  } else {
+    toast(t('ad_unavailable'));
+    $('#timeModal').classList.remove('hidden');
+  }
+};
 $('#btnHintCancel').onclick = () => $('#hintModal').classList.add('hidden');
 $('#btnHintWatch').onclick = async () => {
   $('#hintModal').classList.add('hidden');
@@ -371,6 +443,7 @@ function applySettings() {
 
 // ------------------------------------------------------------- loop
 function frame(now) {
+  tickTimer(now);
   if (game && $('#play').classList.contains('active') && (renderer.dirty || renderer.animating)) {
     renderer.draw(now);
   }
@@ -407,7 +480,7 @@ async function boot() {
   if (native && cap.registerPlugin) {
     const App = cap.registerPlugin('App');
     App.addListener('backButton', () => {
-      if (isOpen('#winModal')) return;
+      if (isOpen('#winModal') || isOpen('#timeModal')) return;
       if (isOpen('#hintModal')) { $('#hintModal').classList.add('hidden'); return; }
       if ($('#home').classList.contains('active')) App.exitApp();
       else show('home');
@@ -422,4 +495,5 @@ async function boot() {
 boot();
 
 // Ganchos para testes/depuração no console
-window.__desata = { startLevel, startDaily, get game() { return game; }, Store, renderer };
+window.__desata = { startLevel, startDaily, get game() { return game; }, Store, renderer,
+  get timeLeft() { return timeLeft; }, setTime(v) { timeLeft = v; updateTimer(); } };

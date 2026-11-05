@@ -53,6 +53,18 @@ export const CONFIG = {
     removeAdsProductId: 'remove_ads',
   },
 
+  // Cronômetro: cada fase tem um tempo limite = base + porJogada × meta de jogadas.
+  // O tutorial (fases 1–4) não tem limite. Quando o tempo acaba, o jogador pode
+  // recomeçar ou ganhar mais tempo assistindo a um vídeo premiado.
+  timer: {
+    enabled: true,
+    fromLevel: 5,
+    base: 45,
+    perMove: 12,
+    warnAt: 10,          // segundos finais em vermelho
+    extraRewarded: 30,   // segundos ganhos com o vídeo
+  },
+
   // Desfazer: grátis algumas vezes por fase; depois, +N assistindo a um vídeo premiado
   undo: {
     freePerLevel: 3,

@@ -3,6 +3,8 @@
 
 const STR = {
   pt: {
+    time_up_title: 'Tempo esgotado ⏱', time_up_body: 'As cordas ainda estão amarradas. Ganhe <b>+{n} s</b> com um vídeo curto ou tente de novo.',
+    try_again: 'Tentar de novo', more_time: '▶ +{n} s', time_line: 'tempo {t}', time_plus: '+{n} s ⏱',
     tut1: 'Arraste uma <b>bolinha</b> para um furo vazio até as cordas <b>não se cruzarem</b>.',
     tut2: 'Uma única jogada pode desfazer <b>vários nós</b> de uma vez. Procure a corda que atrapalha mais.',
     tut3: 'A <b>ordem</b> importa. Errou? Toque em <b>↶</b> para desfazer (3 grátis por fase).',
@@ -34,6 +36,8 @@ const STR = {
     a_undo: 'Desfazer', a_restart: 'Recomeçar', a_markers: 'Mostrar nós', a_hint: 'Dica', a_lang: 'Idioma',
   },
   en: {
+    time_up_title: "Time's up ⏱", time_up_body: 'The ropes are still tied. Get <b>+{n} s</b> with a short video or try again.',
+    try_again: 'Try again', more_time: '▶ +{n} s', time_line: 'time {t}', time_plus: '+{n} s ⏱',
     tut1: 'Drag a <b>ball</b> to an empty hole until the ropes <b>stop crossing</b>.',
     tut2: 'One move can undo <b>several knots</b> at once. Find the rope in the way.',
     tut3: '<b>Order</b> matters. Made a mistake? Tap <b>↶</b> to undo (3 free per level).',
@@ -65,6 +69,8 @@ const STR = {
     a_undo: 'Undo', a_restart: 'Restart', a_markers: 'Show knots', a_hint: 'Hint', a_lang: 'Language',
   },
   es: {
+    time_up_title: 'Se acabó el tiempo ⏱', time_up_body: 'Las cuerdas siguen atadas. Gana <b>+{n} s</b> con un video corto o inténtalo de nuevo.',
+    try_again: 'Reintentar', more_time: '▶ +{n} s', time_line: 'tiempo {t}', time_plus: '+{n} s ⏱',
     tut1: 'Arrastra una <b>bolita</b> a un hueco vacío hasta que las cuerdas <b>no se crucen</b>.',
     tut2: 'Una sola jugada puede deshacer <b>varios nudos</b>. Busca la cuerda que más estorba.',
     tut3: 'El <b>orden</b> importa. ¿Te equivocaste? Toca <b>↶</b> para deshacer (3 gratis por nivel).',
