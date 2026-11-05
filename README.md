@@ -12,7 +12,7 @@ Um único código-fonte (HTML5 + JavaScript, sem framework) roda em:
 | iOS (App Store) | Capacitor → Xcode | AdMob + ATT |
 | Web / PWA | pasta `www/` em qualquer hospedagem | AdSense H5 Games Ads |
 | Portais (CrazyGames, Poki, GameDistribution, itch.io) | `npm run zip:web` | SDK do portal (ver docs) |
-| Windows/Mac/Linux (Steam, itch) | Electron/Tauri sobre `www/` | venda paga (sem anúncios) |
+| Windows/Mac/Linux (Steam, itch) | app Electron em `desktop/` | venda paga (sem anúncios) |
 
 ## Rodar agora
 
@@ -41,6 +41,11 @@ npm run test:e2e     # joga no navegador (precisa de npm start rodando e do Play
 | 61–100 | Expert | 16 | 5×8, menos furos livres | ~90–100 |
 | 100+ | Mestre | 16 | furos livres no mínimo | ~90–100 |
 
+- **Tutorial (fases 1–5):** 4 fases feitas à mão + dicas que ensinam a regra, a jogada que
+  desfaz vários nós, a ordem/desfazer, a dica e as estrelas. Depois, fases procedurais.
+- **Desfazer:** 3 grátis por fase; mais 3 assistindo a um vídeo premiado.
+- **Acabamento:** brilho ao desfazer cada nó, entrada animada do tabuleiro, "Perfeito!" ao
+  bater a meta.
 - **Desafio diário:** uma fase nova por dia (igual para todos), mais difícil ao longo da
   semana, com sequência de dias 🔥 e dica de recompensa.
 - **Estilos:** 6 temas (Clássico, Oceano, Doce, Outono, Neon, Floresta), liberados por
@@ -64,6 +69,7 @@ www/                 jogo (é isto que vai para as lojas)
   privacidade.html   modelo de política de privacidade (LGPD)
 assets/              ícone e splash 1024/2732 px p/ lojas
 tests/               testes do gerador e E2E no navegador
+desktop/             app de computador (Electron), versão paga sem anúncios
 scripts/             ícones e configuração dos projetos nativos
 .github/workflows/   compila Android (APK/AAB) e iOS a cada envio
 docs/PUBLICACAO.md   passo a passo de publicação e monetização

@@ -122,3 +122,14 @@ html, body {
 body.dark { background: radial-gradient(circle at 50% 0%, #2a2550 0%, var(--bg) 55%, var(--bg2) 100%); }
 body.dark .tutorial { color: var(--ink); }
 body.dark .lvl.locked { background: #3a3560; border-color: #554f84; box-shadow: 0 5px 0 #554f84; color: var(--muted); }
+
+/* ---------- acabamento ---------- */
+.badge.undo { background: #3a86ff; }
+.perfect { margin: -4px 0 4px; font-weight: 900; color: #c75c00; font-size: 20px; animation: pop .5s .5s cubic-bezier(.2,1.8,.4,1) both; }
+#boardWrap.board-in { animation: boardIn .45s cubic-bezier(.2,1.2,.4,1) both; }
+@keyframes boardIn { from { opacity: 0; transform: scale(.94) translateY(12px); } }
+.tutorial { animation: tipIn .4s ease-out both; }
+@keyframes tipIn { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  #boardWrap.board-in, .tutorial, .perfect, .card, .stars span.on { animation: none !important; }
+}

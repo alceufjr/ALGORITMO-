@@ -16,6 +16,8 @@ let current = 1;          // fase atual (modo campanha)
 let mode = 'campaign';    // 'campaign' | 'daily'
 let inputLocked = false;
 let markersOn = false;
+let undosLeft = 3;
+let rewardAction = null; // o que o vídeo premiado concede no modal aberto
 let lastKnots = 0;
 
 const theme = () => themeById(Store.data.theme);
@@ -143,8 +145,16 @@ function begin(level) {
   game = new Game(level, theme().palette);
   inputLocked = false;
   renderer.setGame(game);
-  renderer.showMarkers = (mode === 'campaign' && current <= 3) || markersOn;
-  $('#tutorial').classList.toggle('hidden', !(mode === 'campaign' && current <= 2));
+  renderer.showMarkers = (mode === 'campaign' && current <= 2) || markersOn;
+  undosLeft = CONFIG.undo.freePerLevel;
+  // dica do tutorial (fases 1–5)
+  const tip = mode === 'campaign' ? level.tip : null;
+  const tipEl = $('#tutorial');
+  tipEl.classList.toggle('hidden', !tip);
+  if (tip) { tipEl.innerHTML = t(tip); tipEl.style.animation = 'none'; void tipEl.offsetWidth; tipEl.style.animation = ''; }
+  // transição de entrada do tabuleiro
+  const wrap = $('#boardWrap');
+  wrap.classList.remove('board-in'); void wrap.offsetWidth; wrap.classList.add('board-in');
   show('play');
   updateHud();
 }
@@ -172,6 +182,7 @@ function updateHud() {
   $('.knots').classList.toggle('done', game.conflicts === 0);
   $('#hintCount').textContent = Store.data.hints > 0 ? Store.data.hints : '+';
   $('#btnUndo').disabled = game.history.length === 0;
+  $('#undoCount').textContent = undosLeft > 0 ? undosLeft : '+';
   $('#btnMarkers').classList.toggle('off', !renderer.showMarkers);
   renderer.dirty = true;
 }
@@ -196,6 +207,8 @@ function onWin() {
   setTimeout(() => {
     renderer.winT = 0;
     $('#winStars').querySelectorAll('span').forEach((s, i) => s.classList.toggle('on', i < stars));
+    $('#winPerfect').textContent = t('perfect');
+    $('#winPerfect').classList.toggle('hidden', !(stars === 3 && game.moves <= game.level.par));
     let text = t('moves_line', { m: game.moves, p: game.level.par });
     if (mode === 'daily') text += ` · ${t('streak', { n: Store.currentStreak(todayKey()) })}\n${t('daily_win')}`;
     $('#winText').innerText = text;
@@ -214,14 +227,29 @@ async function nextLevel() {
   else startLevel(current + 1);
 }
 
+function openReward(kind) {
+  rewardAction = kind;
+  const hints = kind === 'hints';
+  $('#hintModalTitle').textContent = hints ? t('no_hints_title') : t('no_undo_title');
+  $('#hintModalBody').innerHTML = hints
+    ? t('no_hints_body', { n: CONFIG.hints.perRewarded })
+    : t('no_undo_body', { n: CONFIG.undo.perRewarded });
+  $('#hintModal').classList.remove('hidden');
+}
+
+function doUndo() {
+  if (inputLocked || !game.history.length) return;
+  if (undosLeft <= 0) { openReward('undo'); return; }
+  if (game.undo()) { undosLeft--; Sfx.click(); updateHud(); }
+}
+
 function showHint(free = false) {
   if (!game || inputLocked) return;
   const h = game.hint();
   if (!h) return;
   if (!free) {
     if (Store.data.hints <= 0) {
-      $('#hintModalBody').innerHTML = t('no_hints_body', { n: CONFIG.hints.perRewarded });
-      $('#hintModal').classList.remove('hidden');
+      openReward('hints');
       return;
     }
     Store.set({ hints: Store.data.hints - 1 });
@@ -297,7 +325,7 @@ $('#btnLang').onclick = () => {
 };
 $('#btnSound').onclick = () => { Store.set({ sound: !Store.data.sound }); applySettings(); Sfx.click(); refreshHome(); };
 $('#btnVibe').onclick = () => { Store.set({ vibration: !Store.data.vibration }); applySettings(); Sfx.buzz(30); refreshHome(); };
-$('#btnUndo').onclick = () => { if (!inputLocked && game.undo()) { Sfx.click(); updateHud(); } };
+$('#btnUndo').onclick = doUndo;
 $('#btnRestart').onclick = () => {
   if (inputLocked) return;
   Sfx.click();
@@ -319,14 +347,17 @@ $('#btnReplay').onclick = () => {
 $('#btnHintCancel').onclick = () => $('#hintModal').classList.add('hidden');
 $('#btnHintWatch').onclick = async () => {
   $('#hintModal').classList.add('hidden');
+  const kind = rewardAction;
   const ok = await Ads.rewarded();
-  if (ok) {
+  if (!ok) { toast(t('ad_unavailable')); return; }
+  if (kind === 'undo') {
+    undosLeft += CONFIG.undo.perRewarded;
+    toast(t('undo_plus', { n: CONFIG.undo.perRewarded }));
+  } else {
     Store.set({ hints: Store.data.hints + CONFIG.hints.perRewarded });
     toast(t('hints_plus', { n: CONFIG.hints.perRewarded }));
-    updateHud();
-  } else {
-    toast(t('ad_unavailable'));
   }
+  updateHud();
 };
 $('#btnNoAds').onclick = async () => {
   // Integração de compra: ver docs/PUBLICACAO.md (RevenueCat).

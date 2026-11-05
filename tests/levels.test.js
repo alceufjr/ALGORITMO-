@@ -57,7 +57,7 @@ for (let n = 1; n <= N; n++) {
   assert.equal(keys.size, L.pegs.length, `fase ${n}: furos duplicados`);
   assert.ok(L.pegs.length > L.ropes.length * 2, `fase ${n}: sem furo livre`);
   assert.deepEqual(generateLevel(n), L, `fase ${n}: não determinística`);
-  assert.ok(L.ropes.length >= prevRopes, `fase ${n}: menos cordas que a anterior`);
+  if (n > 5) assert.ok(L.ropes.length >= prevRopes, `fase ${n}: menos cordas que a anterior`);
   prevRopes = L.ropes.length;
   assert.ok(L.par >= 1 && L.par <= L.scrambleMoves, `fase ${n}: meta fora do intervalo`);
   assert.ok(ms < 2500, `fase ${n}: geração lenta (${ms}ms)`);
@@ -72,6 +72,19 @@ for (let n = 1; n <= N; n++) {
     rows.push({ fase: n, nível: L.tier, cordas: L.ropes.length, grade: `${L.cols}x${L.rows}`,
       nós: g.conflicts, meta: L.par, ms });
   }
+}
+
+// tutorial feito à mão: nós exatos, sem bolinha sobre corda, meta = jogadas do roteiro
+{
+  const want = [1, 2, 3, 4];
+  for (let n = 1; n <= 4; n++) {
+    const L = generateLevel(n);
+    const g = new Game(L);
+    assert.ok(L.handmade && L.tip === `tut${n}`, `tutorial ${n}: metadados`);
+    assert.equal(g.state.twists, want[n - 1], `tutorial ${n}: nº de nós`);
+    assert.equal(g.state.touching, 0, `tutorial ${n}: bolinha sobre corda`);
+  }
+  assert.equal(generateLevel(5).tip, 'tut5');
 }
 
 // dica sempre aponta jogada válida; nas primeiras fases, seguir dicas resolve

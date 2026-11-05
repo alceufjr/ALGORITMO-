@@ -1,12 +1,17 @@
 // ============================================================
 //  CONFIGURAÇÃO CENTRAL DO JOGO — edite aqui antes de publicar
 // ============================================================
+// Versão de computador (Steam / itch.io): paga e sem anúncios.
+// O app de desktop (desktop/main.cjs) abre o jogo com ?desktop=1.
+const IS_DESKTOP = typeof location !== 'undefined' && /[?&]desktop=1/.test(location.search);
+
 export const CONFIG = {
+  isDesktop: IS_DESKTOP,
   appName: 'Desata!',
   version: '1.0.0',
 
   ads: {
-    enabled: true,
+    enabled: !IS_DESKTOP,
     // ⚠️ MUDE PARA false ANTES DE PUBLICAR NAS LOJAS.
     // Com true, são exibidos apenas anúncios de TESTE (nunca clique em
     // anúncios reais seus — o AdMob bane a conta).
@@ -46,6 +51,12 @@ export const CONFIG = {
   iap: {
     enabled: false,
     removeAdsProductId: 'remove_ads',
+  },
+
+  // Desfazer: grátis algumas vezes por fase; depois, +N assistindo a um vídeo premiado
+  undo: {
+    freePerLevel: 3,
+    perRewarded: 3,
   },
 
   hints: {

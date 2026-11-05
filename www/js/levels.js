@@ -160,6 +160,48 @@ function exactPar(pegs, ends, K, upper) {
   return upper;
 }
 
+// ------------------------------------------------------------ tutorial feito à mão
+// Tabuleiro resolvido + jogadas de embaralhamento (cada jogada: corda, ponta, destino).
+// Encontrados por busca e verificados: nº exato de nós, nenhuma bolinha sobre corda e
+// meta igual ao mínimo de jogadas. Fase 5 em diante é procedural.
+const TUTORIAL = [
+  { cols: 3, rows: 3, tip: 'tut1',
+    solved: [[[1, 0], [1, 2]], [[0, 2], [0, 0]]], moves: [[1, 1, [2, 0]]] },
+  { cols: 3, rows: 4, tip: 'tut2',
+    solved: [[[1, 0], [0, 2]], [[0, 1], [0, 0]], [[2, 0], [1, 2]]], moves: [[1, 1, [2, 2]]] },
+  { cols: 4, rows: 4, tip: 'tut3',
+    solved: [[[2, 1], [0, 2]], [[2, 2], [2, 3]], [[2, 0], [3, 1]], [[3, 3], [3, 2]]],
+    moves: [[2, 1, [0, 3]], [3, 1, [1, 0]]] },
+  { cols: 4, rows: 5, tip: 'tut4',
+    solved: [[[1, 1], [0, 1]], [[1, 2], [3, 3]], [[3, 1], [2, 2]], [[0, 2], [1, 3]], [[2, 3], [0, 4]]],
+    moves: [[3, 0, [2, 4]], [1, 1, [0, 0]], [2, 1, [1, 4]]] },
+];
+export const TUTORIAL_TIPS = { 1: 'tut1', 2: 'tut2', 3: 'tut3', 4: 'tut4', 5: 'tut5' };
+
+function buildTutorial(n) {
+  const T = TUTORIAL[n - 1];
+  const pegs = [];
+  for (let y = 0; y < T.rows; y++) for (let x = 0; x < T.cols; x++) pegs.push({ x, y });
+  const id = ([x, y]) => y * T.cols + x;
+  const ends = T.solved.map(([a, b]) => [id(a), id(b)]);
+  const solution = ends.map((e) => e.slice());
+  const K = {};
+  const done = [];
+  for (const [r, e, to] of T.moves) {
+    const from = ends[r][e];
+    sweep(pegPoints(pegs, ends), K, r, e, pegs[id(to)]);
+    ends[r][e] = id(to);
+    done.push({ rope: r, end: e, from, to: id(to) });
+  }
+  return {
+    n, tier: 'easy', tip: T.tip, handmade: true, cols: T.cols, rows: T.rows, pegs,
+    ropes: ends.map((e, i) => ({ c: [1, 0, 3, 2, 5, 4][i], a: e[0], b: e[1] })),
+    twists: K, par: T.moves.length, solution,
+    solutionMoves: done.slice().reverse().map((m) => ({ rope: m.rope, end: m.end, to: m.from })),
+    scrambleMoves: T.moves.length, startConflicts: tangleTotal(K),
+  };
+}
+
 const cache = new Map();
 
 /**
@@ -169,7 +211,13 @@ const cache = new Map();
 export function generateLevel(n, salt = 0) {
   const key = `${n}:${salt}`;
   if (cache.has(key)) return JSON.parse(JSON.stringify(cache.get(key)));
-  const p = levelParams(n);
+  if (!salt && n <= TUTORIAL.length) {
+    const L = buildTutorial(n);
+    cache.set(key, L);
+    return JSON.parse(JSON.stringify(L));
+  }
+  // campanha: a curva procedural continua de onde o tutorial (4 fases) parou
+  const p = { ...levelParams(salt ? n : n + TUTORIAL.length), n };
   for (let attempt = 0; attempt < 400; attempt++) {
     const rng = new Rng(salt ? hashSeed(0xDA1E, salt, n, attempt) : hashSeed(0xC0DA, n, attempt));
     const solved = buildSolved(p, rng);
@@ -189,6 +237,7 @@ export function generateLevel(n, salt = 0) {
       rows: p.rows,
       pegs,
       ropes: ends.map((e, i) => ({ c: colors[i % colors.length], a: e[0], b: e[1] })),
+      tip: TUTORIAL_TIPS[n] || null,
       twists: K,              // voltas iniciais entre pares de cordas ("i,j": n)
       par,
       solution,               // tabuleiro resolvido de origem

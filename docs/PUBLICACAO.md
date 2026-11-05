@@ -60,6 +60,7 @@
 | Banner adaptativo | rodapé, sempre (apps) | `showBanner` |
 | Intersticial | a cada 3 fases, nunca antes da fase 4, ≥ 90 s de intervalo | `interstitialEveryLevels`, `firstInterstitialAfterLevel`, `interstitialMinIntervalSec` |
 | Premiado (rewarded) | jogador sem dicas escolhe assistir → +2 dicas | `hints.perRewarded` |
+| Premiado (rewarded) | após 3 desfazeres grátis na fase → +3 desfazeres | `undo.freePerLevel`, `undo.perRewarded` |
 
 O premiado costuma ter o melhor eCPM e a melhor aceitação: é opcional para o jogador.
 Intersticial demais derruba a retenção; ajuste a frequência olhando o *D1/D7 retention*
@@ -178,13 +179,27 @@ PokiSDK.rewardedBreak().then((ok) => done(ok));
 Empacote com `npm run zip:web` e envie pelo painel do portal (CrazyGames, Poki,
 GameDistribution, itch.io).
 
-## 7. Desktop (Steam / itch.io / Microsoft Store)
+## 7. Desktop (Steam / itch.io / Microsoft Store) — versão paga, sem anúncios
 
-Na versão paga **remova os anúncios** (`ads.enabled = false`). Empacote `www/` com
-**Electron** (`electron-builder`) ou **Tauri**. A Microsoft Store também aceita PWA
-via **PWABuilder.com** (gera pacote MSIX a partir da URL do site).
+O app de computador já está em `desktop/` (Electron). Ele abre o jogo com `?desktop=1`,
+o que desliga todos os anúncios e esconde a compra "Remover anúncios".
 
----
+```bash
+cd desktop
+npm install
+npm start        # testa no seu computador
+npm run dist     # gera instaladores em desktop/dist (do sistema em que você está)
+```
+
+Sem instalar nada: GitHub → **Actions** → **Apps** → **Run workflow**. O job `desktop`
+gera os instaladores de Windows (.exe), macOS (.dmg) e Linux (.AppImage) em *Artifacts*.
+
+- **itch.io:** envie os instaladores e defina o preço na página do jogo.
+- **Steam:** taxa de US$ 100 por jogo (Steamworks). Para conquistas, use a biblioteca
+  `steamworks.js` dentro de `desktop/main.cjs`.
+- **Microsoft Store:** o PWA (site) também pode virar pacote pelo PWABuilder.com.
+- macOS fora da App Store precisa de assinatura e notarização da Apple para abrir sem
+  aviso; o build automático sai sem assinatura.
 
 ## 8. Checklist final
 
@@ -204,6 +219,6 @@ via **PWABuilder.com** (gera pacote MSIX a partir da URL do site).
 - **Firebase Analytics + Remote Config:** ajustar frequência de anúncios e curva de
   dificuldade sem publicar nova versão.
 - **Mediação AdMob** (AppLovin, Meta, Unity, Liftoff): +20–40 % de eCPM típico.
-- Já implementados: desafio diário com sequência, 6 temas (estrelas/anúncio premiado) e
-  PT/EN/ES. Próximos: mais temas, conquistas, ranking (Google Play Games / Game Center).
+- Já implementados: tutorial de 5 fases, desafio diário com sequência, 6 temas
+  (estrelas/anúncio premiado), PT/EN/ES e desfazer limitado (3 por fase + vídeo premiado). Próximos: mais temas, conquistas, ranking (Google Play Games / Game Center).
 - Textos da loja também em EN e ES, para aproveitar a tradução do jogo.

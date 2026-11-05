@@ -3,6 +3,13 @@
 
 const STR = {
   pt: {
+    tut1: 'Arraste uma <b>bolinha</b> para um furo vazio até as cordas <b>não se cruzarem</b>.',
+    tut2: 'Uma única jogada pode desfazer <b>vários nós</b> de uma vez. Procure a corda que atrapalha mais.',
+    tut3: 'A <b>ordem</b> importa. Errou? Toque em <b>↶</b> para desfazer (3 grátis por fase).',
+    tut4: 'Travou? Toque em <b>💡</b> e veja a melhor jogada.',
+    tut5: 'Resolva com até a <b>meta de jogadas</b> para ganhar <b>3 estrelas</b> ⭐',
+    no_undo_title: 'Sem desfazer ↶', no_undo_body: 'Assista a um vídeo curto e ganhe <b>{n}</b> desfazeres nesta fase.',
+    undo_plus: '+{n} desfazer ↶', perfect: 'Perfeito! ✨',
     tagline: 'Desfaça os nós. Relaxe a mente.',
     play: 'Jogar', levels: 'Fases', daily: 'Desafio diário', styles: 'Estilos',
     stars_won: '{n} ★ conquistadas', privacy: 'Política de privacidade',
@@ -27,6 +34,13 @@ const STR = {
     a_undo: 'Desfazer', a_restart: 'Recomeçar', a_markers: 'Mostrar nós', a_hint: 'Dica', a_lang: 'Idioma',
   },
   en: {
+    tut1: 'Drag a <b>ball</b> to an empty hole until the ropes <b>stop crossing</b>.',
+    tut2: 'One move can undo <b>several knots</b> at once. Find the rope in the way.',
+    tut3: '<b>Order</b> matters. Made a mistake? Tap <b>↶</b> to undo (3 free per level).',
+    tut4: 'Stuck? Tap <b>💡</b> to see the best move.',
+    tut5: 'Solve within the <b>move goal</b> to earn <b>3 stars</b> ⭐',
+    no_undo_title: 'No undos left ↶', no_undo_body: 'Watch a short video to get <b>{n}</b> undos for this level.',
+    undo_plus: '+{n} undo ↶', perfect: 'Perfect! ✨',
     tagline: 'Untie the knots. Relax your mind.',
     play: 'Play', levels: 'Levels', daily: 'Daily challenge', styles: 'Styles',
     stars_won: '{n} ★ earned', privacy: 'Privacy policy',
@@ -51,6 +65,13 @@ const STR = {
     a_undo: 'Undo', a_restart: 'Restart', a_markers: 'Show knots', a_hint: 'Hint', a_lang: 'Language',
   },
   es: {
+    tut1: 'Arrastra una <b>bolita</b> a un hueco vacío hasta que las cuerdas <b>no se crucen</b>.',
+    tut2: 'Una sola jugada puede deshacer <b>varios nudos</b>. Busca la cuerda que más estorba.',
+    tut3: 'El <b>orden</b> importa. ¿Te equivocaste? Toca <b>↶</b> para deshacer (3 gratis por nivel).',
+    tut4: '¿Atascado? Toca <b>💡</b> para ver la mejor jugada.',
+    tut5: 'Resuelve dentro de la <b>meta de jugadas</b> para ganar <b>3 estrellas</b> ⭐',
+    no_undo_title: 'Sin deshacer ↶', no_undo_body: 'Mira un video corto y gana <b>{n}</b> deshacer en este nivel.',
+    undo_plus: '+{n} deshacer ↶', perfect: '¡Perfecto! ✨',
     tagline: 'Deshaz los nudos. Relaja la mente.',
     play: 'Jugar', levels: 'Niveles', daily: 'Reto diario', styles: 'Estilos',
     stars_won: '{n} ★ conseguidas', privacy: 'Política de privacidad',

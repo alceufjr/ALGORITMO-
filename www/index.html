@@ -79,10 +79,10 @@
         <span class="pill">⟲ <span id="hudMoves">0</span>/<span id="hudPar">0</span></span>
       </header>
       <div class="knots"><span id="hudKnots">0</span> <span id="hudKnotsLabel"></span></div>
-      <p id="tutorial" class="tutorial hidden" data-i18n-html="tutorial"></p>
-      <div id="boardWrap"><canvas id="board"></canvas></div>
+      <p id="tutorial" class="tutorial hidden"></p>
+      <div id="boardWrap" class="board-in"><canvas id="board"></canvas></div>
       <footer class="bar bottom">
-        <button id="btnUndo" class="btn icon" data-i18n-aria="a_undo">↶</button>
+        <button id="btnUndo" class="btn icon" data-i18n-aria="a_undo">↶<span id="undoCount" class="badge undo">3</span></button>
         <button id="btnRestart" class="btn icon" data-i18n-aria="a_restart">⟳</button>
         <button id="btnMarkers" class="btn icon" data-i18n-aria="a_markers">✖</button>
         <button id="btnHint" class="btn icon hint" data-i18n-aria="a_hint">💡<span id="hintCount" class="badge">3</span></button>
@@ -93,6 +93,7 @@
     <div id="winModal" class="modal hidden">
       <div class="card">
         <h2 data-i18n="win_title"></h2>
+        <p id="winPerfect" class="perfect hidden"></p>
         <div id="winStars" class="stars"><span>★</span><span>★</span><span>★</span></div>
         <p id="winText"></p>
         <p id="winBonus" class="bonus hidden"></p>
@@ -105,7 +106,7 @@
 
     <div id="hintModal" class="modal hidden">
       <div class="card">
-        <h2 data-i18n="no_hints_title"></h2>
+        <h2 id="hintModalTitle"></h2>
         <p id="hintModalBody"></p>
         <div class="row">
           <button id="btnHintCancel" class="btn" data-i18n="not_now"></button>

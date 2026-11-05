@@ -1,0 +1,26 @@
+{
+  "name": "desata-desktop",
+  "productName": "Desata!",
+  "version": "1.0.0",
+  "description": "Desata! — puzzle de cordas (versão para computador, sem anúncios)",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.seunome.desata.desktop",
+    "productName": "Desata!",
+    "files": ["main.cjs"],
+    "extraResources": [{ "from": "../www", "to": "game", "filter": ["**/*", "!sw.js"] }],
+    "directories": { "output": "dist", "buildResources": "../assets" },
+    "win": { "target": ["nsis", "portable"], "icon": "../assets/icon-only.png" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.puzzle-games", "icon": "../assets/icon-only.png" },
+    "linux": { "target": ["AppImage"], "category": "Game", "icon": "../assets/icon-only.png" }
+  }
+}

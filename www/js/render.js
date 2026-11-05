@@ -84,6 +84,7 @@ export class Renderer {
     this.g = g;
     this.drag = this.snap = this.hint = null;
     this.particles = [];
+    this.stableKnots = null;
     this.winT = 0;
     this.layout();
     this.dirty = true;
@@ -141,6 +142,17 @@ export class Renderer {
       if (d < bd) { bd = d; best = i; }
     });
     return best;
+  }
+
+  /** Pequena explosão de brilho (nó desfeito). */
+  sparkle(x, y) {
+    const cols = ['#ffffff', '#ffd166', '#ffe9a8', '#ffbe0b'];
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2 + Math.random() * 0.3;
+      const v = 2.5 + Math.random() * 3.5;
+      this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 1, r: 2 + Math.random() * 3,
+        a: Math.random() * Math.PI, va: 0.3, c: cols[i % cols.length], life: 0.9, star: true });
+    }
   }
 
   burst(n = 120) {
@@ -201,6 +213,14 @@ export class Renderer {
     for (const id of g.order) pos[id] = [this.endPos(id, 0, now), this.endPos(id, 1, now)];
     const dragged = this.drag ? this.drag.ropeId : -1;
     const tangles = this.weave(pos);
+    // brilho onde um nó acabou de se desfazer (compara com o último estado parado)
+    if (!this.drag && !this.snap) {
+      const now2 = new Map(tangles.map((c) => [`${c.i},${c.j}`, { x: c.x, y: c.y }]));
+      if (this.stableKnots) {
+        for (const [k, p] of this.stableKnots) if (!now2.has(k)) this.sparkle(p.x, p.y);
+      }
+      this.stableKnots = now2;
+    }
     const paths = buildRopes(pos, tangles, { w: this.ropeW, endR: this.pegR, lifted: dragged });
     this.drawRopes(paths, pulse);
 
@@ -429,9 +449,9 @@ export class Renderer {
   drawParticles() {
     const ctx = this.ctx;
     for (const p of this.particles) {
-      p.vy += 0.35; p.vx *= 0.99;
+      p.vy += p.star ? 0.12 : 0.35; p.vx *= p.star ? 0.93 : 0.99; if (p.star) p.vy *= 0.93;
       p.x += p.vx; p.y += p.vy; p.a += p.va;
-      p.life -= 0.008;
+      p.life -= p.star ? 0.03 : 0.008;
       ctx.save();
       ctx.globalAlpha = Math.max(0, p.life);
       ctx.translate(p.x, p.y);
