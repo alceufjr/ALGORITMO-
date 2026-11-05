@@ -114,8 +114,10 @@ function scramble(p, rng, pegs, ends) {
       sweep(P, K2, rope, end, pegs[to]);
       const from = ends[rope][end];
       ends[rope][end] = to;
-      const c = tangleTotal(K2) + touchingCount(pegs, ends);
+      const touching = touchingCount(pegs, ends);
+      const c = tangleTotal(K2) + touching;
       ends[rope][end] = from;
+      if (touching) continue; // fases começam só com cruzamentos visíveis (nada de bolinha sobre corda)
       // aproxima do alvo de nós; acima do alvo é penalizado
       const score = -Math.abs(c - p.targetKnots) + rng.float() * 1.5;
       if (!best || score > best.score) best = { rope, end, from, to, c, score, K: K2 };

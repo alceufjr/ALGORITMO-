@@ -23,12 +23,14 @@ assert.equal(conflictPoint({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 
   assert.equal(tangleTotal(K), 1, 'cruzou uma vez');
   sweep(P, K, 0, 1, { x: 2, y: 0.5 });
   assert.equal(tangleTotal(K), 0, 'voltar pelo mesmo caminho desenrola');
-  // A por cima de B; depois a ponta de B (por baixo) é puxada por cima de A: ENGANCHA.
+  // A por cima de B; depois a ponta de B é puxada para trás de A: deixam de se cruzar,
+  // então NÃO pode sobrar nó escondido
   sweep(P, K, 0, 1, { x: 2, y: 2 });
   sweep(P, K, 1, 1, { x: 1.5, y: 1 });
-  assert.equal(tangleTotal(K), 2, 'enganchou (2 voltas) sem cruzar em linha reta');
+  assert.equal(tangleTotal(K), 0, 'sem cruzamento visível = sem nó');
   sweep(P, K, 1, 1, { x: 4, y: 1 });
-  assert.equal(tangleTotal(K), 1, 'desfazer o último arraste solta o enganche');
+  assert.equal(tangleTotal(K), 1, 'cruzou de novo = 1 nó');
+  assert.equal(K['0,1'] > 0 ? 0 : 1, 1, 'a corda que se moveu (B) passa por cima');
   // contornar a ponta de outra corda e voltar ao mesmo lugar por cima não enrola
   const P2 = [[{ x: 0, y: 0 }, { x: 1, y: 0 }], [{ x: 3, y: -1 }, { x: 3, y: 1 }]];
   const K2 = {};
@@ -60,10 +62,15 @@ for (let n = 1; n <= N; n++) {
   assert.ok(L.par >= 1 && L.par <= L.scrambleMoves, `fase ${n}: meta fora do intervalo`);
   assert.ok(ms < 2500, `fase ${n}: geração lenta (${ms}ms)`);
 
+  // todo nó do início é um cruzamento visível
+  for (const key of Object.keys(L.twists)) {
+    const [i, j] = key.split(',').map(Number);
+    const A = L.ropes[i], B = L.ropes[j];
+    assert.ok(conflictPoint(L.pegs[A.a], L.pegs[A.b], L.pegs[B.a], L.pegs[B.b]), `fase ${n}: nó invisível ${key}`);
+  }
   if (n <= 5 || n % 10 === 0) {
-    const hooks = Object.values(L.twists).filter((v) => Math.abs(v) >= 2).length;
     rows.push({ fase: n, nível: L.tier, cordas: L.ropes.length, grade: `${L.cols}x${L.rows}`,
-      nós: g.conflicts, enganches: hooks, meta: L.par, ms });
+      nós: g.conflicts, meta: L.par, ms });
   }
 }
 

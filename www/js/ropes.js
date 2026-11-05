@@ -137,7 +137,7 @@ export function buildRopes(pos, tangles, opt) {
   }
 
   // 3) Relaxação global (suaviza TODOS os nós da corda para eliminar qualquer quina)
-  relaxAndSmooth(ropes, w);
+  relaxAndSmooth(ropes, w, tangles);
 
   // 4) Interpolação Spline final
   const out = {};
@@ -150,15 +150,18 @@ export function buildRopes(pos, tangles, opt) {
 /**
  * Suavização global de tensão elástica (Verlet Laplacian) em toda a extensão da corda.
  */
-function relaxAndSmooth(ropes, w) {
+function relaxAndSmooth(ropes, w, tangles) {
   const allRopes = Object.values(ropes);
   const minD = w * 0.96;
+  // colisão só entre cordas ENROSCADAS: cordas soltas ficam retas e no lugar real,
+  // para o desenho nunca esconder nem inventar um cruzamento
+  const pairs = tangles.map((c) => [ropes[c.i], ropes[c.j]]);
 
   for (let iter = 0; iter < 8; iter++) {
     // Colisão suave entre cordas quando estão na mesma altura Z (impede sobreposição paralela feia)
-    for (let i = 0; i < allRopes.length; i++) {
-      for (let j = i + 1; j < allRopes.length; j++) {
-        const P = allRopes[i].nodes, Q = allRopes[j].nodes;
+    for (const [RA, RB] of pairs) {
+      {
+        const P = RA.nodes, Q = RB.nodes;
         // otimização: pula pares de cordas cujas caixas envolventes estão longe
         // (não muda o resultado: nenhum par de nós ficaria a menos de minD)
         if (!boxesNear(P, Q, minD)) continue;

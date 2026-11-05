@@ -1,6 +1,6 @@
 // Estado de uma partida: cordas que se ENROLAM conforme o caminho do arraste.
 // Ver o modelo em core.js (sweep). Vence quando nenhum par de cordas tem voltas.
-import { sweep, tangleTotal, touchingCount, pegPoints } from './core.js';
+import { sweep, tangleTotal, touchingCount, touchingPegs, pegPoints } from './core.js';
 
 const canonK = (K) => JSON.stringify(Object.keys(K).sort().map((k) => [k, K[k]]));
 
@@ -35,8 +35,9 @@ export class Game {
       perRope[j] += Math.abs(v);
     }
     const twists = tangleTotal(this.K);
-    const touching = this.live ? 0 : touchingCount(this.pegs, this.ends);
-    this.state = { total: twists + touching, twists, touching, perRope };
+    const touchPegs = this.live ? [] : touchingPegs(this.pegs, this.ends);
+    const touching = touchPegs.length;
+    this.state = { total: twists + touching, twists, touching, touchPegs, perRope };
   }
 
   get conflicts() { return this.state.total; }

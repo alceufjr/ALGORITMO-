@@ -161,7 +161,8 @@ export class Renderer {
   }
 
   get animating() {
-    return !!(this.drag || this.snap || this.hint || this.particles.length || this.winT);
+    return !!(this.drag || this.snap || this.hint || this.particles.length || this.winT ||
+      (this.g && this.g.state.touchPegs && this.g.state.touchPegs.length));
   }
 
   // -------------------------------------------------------------- desenho
@@ -208,6 +209,16 @@ export class Renderer {
       const lifted = id === dragged;
       this.drawBall(pos[id][0], r.color, lifted && this.drag.end === 0);
       this.drawBall(pos[id][1], r.color, lifted && this.drag.end === 1);
+    }
+
+    // bolinha pousada sobre outra corda também é nó: anel vermelho pulsando
+    for (const peg of g.state.touchPegs || []) {
+      const p = this.pegPos(peg);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, this.pegR + 5 + Math.sin(now / 160) * 2, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(230,57,70,.9)';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
     }
 
     // marcadores de cruzamento (tutorial / acessibilidade)
