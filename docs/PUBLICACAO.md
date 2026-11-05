@@ -1,4 +1,4 @@
-# Guia de publicação e monetização — Desenrola!
+# Guia de publicação e monetização — Desata!
 
 > Checklist prático para levar o jogo do código às lojas, com anúncios rendendo.
 > Valores de taxas e regras das lojas mudam; confira sempre no console oficial.
@@ -7,12 +7,10 @@
 
 ## 0. Antes de tudo
 
-1. **Nome / marca.** "Desenrola" já é usado por um programa do Governo Federal
-   ("Desenrola Brasil"). Pesquise no **INPI** (busca.inpi.gov.br), na Google Play e na
-   App Store e, se houver conflito, troque o nome em `www/index.html`,
-   `www/manifest.webmanifest`, `capacitor.config.json` e `www/js/config.js`.
-   Sugestões: *Nó Solto*, *Corda Livre*, *Desata!*, *Fio a Fio*.
-2. **ID do app** em `capacitor.config.json` (`appId`): ex. `br.com.seunome.desata`.
+1. **Nome / marca.** O nome escolhido é **Desata!**. Antes de publicar, confirme no **INPI**
+   (busca.inpi.gov.br), na Google Play e na App Store que não há marca igual registrada
+   na classe de jogos (classe 9 / 41).
+2. **ID do app** em `capacitor.config.json` (`appId`, hoje `com.seunome.desata`): troque por algo seu, ex. `br.com.seunome.desata`.
    Não dá para mudar depois de publicado.
 3. **Política de privacidade:** preencha `www/privacidade.html` e hospede-a numa URL
    pública (GitHub Pages serve). As duas lojas e o AdMob exigem.
@@ -84,7 +82,34 @@ npm i @revenuecat/purchases-capacitor && npx cap sync
 
 ---
 
-## 2. Android (Google Play)
+## 2. Compilação automática (GitHub Actions)
+
+A cada envio ao GitHub, o fluxo `.github/workflows/apps.yml` compila:
+
+- **Android:** um **APK de teste** (instale direto no celular para jogar) e, se você
+  cadastrar os segredos de assinatura, o **.aab assinado** para a Google Play.
+- **iOS:** compila para o simulador, para garantir que o projeto está íntegro.
+
+Onde baixar: GitHub → aba **Actions** → execução mais recente → **Artifacts** → `desata-android`.
+
+Segredos (GitHub → Settings → Secrets and variables → Actions):
+
+| Segredo | Para quê |
+|---|---|
+| `ADMOB_APP_ID_ANDROID`, `ADMOB_APP_ID_IOS` | App IDs reais do AdMob (sem eles, usa os de teste) |
+| `ANDROID_KEYSTORE_BASE64` | seu keystore, em base64: `base64 -w0 upload.jks` |
+| `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | senhas e alias da chave |
+
+Criar o keystore (uma única vez, guarde em local seguro):
+
+```bash
+keytool -genkey -v -keystore upload.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+`scripts/configure-native.sh` insere automaticamente o App ID do AdMob, a orientação
+retrato e o texto do pedido de rastreamento (iOS). Sem o App ID o app fecha ao abrir.
+
+## 3. Android (Google Play) — pelo seu computador
 
 Requisitos: Node 20+, Android Studio (JDK 21 incluso).
 
@@ -93,6 +118,7 @@ npm install
 npm run icons                     # gera PNGs (opcional; já estão em assets/)
 npx cap add android
 npx capacitor-assets generate     # ícones e splash em todas as resoluções
+bash scripts/configure-native.sh android
 npx cap sync android
 npx cap open android              # abre o Android Studio
 ```
@@ -110,11 +136,12 @@ Na Play Console:
 - Faixa de teste fechado → produção.
 - Mantenha o `targetSdkVersion` no mínimo exigido pela Play no momento.
 
-## 3. iOS (App Store)
+## 4. iOS (App Store)
 
 ```bash
 npx cap add ios
 npx capacitor-assets generate
+bash scripts/configure-native.sh ios
 npx cap sync ios
 npx cap open ios                  # Xcode
 ```
@@ -126,14 +153,14 @@ classificação etária e revisão.
 
 Sem Mac: Codemagic ou Ionic Appflow compilam na nuvem a partir deste repositório.
 
-## 4. Web (site próprio + AdSense)
+## 5. Web (site próprio + AdSense)
 
 1. Hospede a pasta `www/` (GitHub Pages, Netlify, Vercel, Cloudflare Pages — HTTPS).
 2. Solicite no AdSense o programa **H5 Games Ads (Ad Placement API)** e coloque o
    `ca-pub-...` em `CONFIG.ads.web.adsenseClient`.
 3. O jogo já instala como PWA (manifest + service worker) e funciona offline.
 
-## 5. Portais de jogos web
+## 6. Portais de jogos web
 
 Os portais pagam por *revenue share* e **proíbem AdSense próprio**: deixe
 `adsenseClient` vazio e use o SDK deles dentro de `ads.js` (mesma interface):
@@ -151,7 +178,7 @@ PokiSDK.rewardedBreak().then((ok) => done(ok));
 Empacote com `npm run zip:web` e envie pelo painel do portal (CrazyGames, Poki,
 GameDistribution, itch.io).
 
-## 6. Desktop (Steam / itch.io / Microsoft Store)
+## 7. Desktop (Steam / itch.io / Microsoft Store)
 
 Na versão paga **remova os anúncios** (`ads.enabled = false`). Empacote `www/` com
 **Electron** (`electron-builder`) ou **Tauri**. A Microsoft Store também aceita PWA
@@ -159,7 +186,7 @@ via **PWABuilder.com** (gera pacote MSIX a partir da URL do site).
 
 ---
 
-## 7. Checklist final
+## 8. Checklist final
 
 - [ ] Nome livre (INPI + lojas) e `appId` definitivo
 - [ ] `testing: false` e IDs reais do AdMob
@@ -172,11 +199,11 @@ via **PWABuilder.com** (gera pacote MSIX a partir da URL do site).
 - [ ] Capturas de tela e textos da loja em PT-BR e EN
 - [ ] Formulários Segurança dos dados (Play) / Privacidade (Apple)
 
-## 8. Próximos passos que aumentam receita
+## 9. Próximos passos que aumentam receita
 
 - **Firebase Analytics + Remote Config:** ajustar frequência de anúncios e curva de
   dificuldade sem publicar nova versão.
 - **Mediação AdMob** (AppLovin, Meta, Unity, Liftoff): +20–40 % de eCPM típico.
-- **Desafio diário** (semente = data) e sequência de dias → retenção.
-- **Temas/cordas cosméticas** desbloqueáveis por anúncio premiado ou compra.
-- **Localização** (EN, ES): o mercado de puzzle casual é global.
+- Já implementados: desafio diário com sequência, 6 temas (estrelas/anúncio premiado) e
+  PT/EN/ES. Próximos: mais temas, conquistas, ranking (Google Play Games / Game Center).
+- Textos da loja também em EN e ES, para aproveitar a tradução do jogo.
